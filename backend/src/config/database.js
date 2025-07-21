@@ -3,40 +3,43 @@ const mongoose = require('mongoose');
 const connectDB = async () => {
   try {
     const mongoURI =
-      process.env.MONGODB_URI || 'mongodb://localhost:27017/crushermate';
+      process.env.MONGODB_URI ||
+      'mongodb+srv://rajenderreddygarlapalli:MacBook%408358%249154@crushermate.utrbdfv.mongodb.net/CrusherMate?retryWrites=true&w=majority';
 
-    const options = {
+    console.log('🔗 Connecting to MongoDB...');
+    console.log('📊 Database:', process.env.DB_NAME || 'crushermate');
+
+    await mongoose.connect(mongoURI, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
-      maxPoolSize: 10, // Maintain up to 10 socket connections
-      serverSelectionTimeoutMS: 5000, // Keep trying to send operations for 5 seconds
-      socketTimeoutMS: 45000, // Close sockets after 45 seconds of inactivity
+      serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
+      socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
       bufferMaxEntries: 0, // Disable mongoose buffering
-    };
+      bufferCommands: false, // Disable mongoose buffering
+    });
 
-    const conn = await mongoose.connect(mongoURI, options);
+    console.log('✅ MongoDB connected successfully');
+    console.log('📊 Database:', mongoose.connection.name);
 
-    console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
-    console.log(`📊 Database: ${conn.connection.name}`);
+    // Handle connection events
+    mongoose.connection.on('error', err => {
+      console.error('❌ MongoDB connection error:', err);
+    });
 
-    return conn;
+    mongoose.connection.on('disconnected', () => {
+      console.log('🔌 MongoDB disconnected');
+    });
+
+    mongoose.connection.on('reconnected', () => {
+      console.log('🔄 MongoDB reconnected');
+    });
   } catch (error) {
     console.error('❌ MongoDB connection error:', error.message);
-    throw error;
+    // Don't exit process in serverless environment
+    if (process.env.NODE_ENV !== 'production') {
+      process.exit(1);
+    }
   }
 };
 
-// MongoDB connection events
-mongoose.connection.on('connected', () => {
-  console.log('📡 Mongoose connected to MongoDB');
-});
-
-mongoose.connection.on('error', error => {
-  console.error('❌ Mongoose connection error:', error);
-});
-
-mongoose.connection.on('disconnected', () => {
-  console.log('📴 Mongoose disconnected from MongoDB');
-});
-
-module.exports = { connectDB };
+module.exports = connectDB;
