@@ -9,8 +9,8 @@ if (__DEV__) {
     API_BASE_URL = 'http://192.168.29.243:3000/api'; // Android Emulator & Local Network
   }
 } else {
-  // For production, use your public IP for external access
-  API_BASE_URL = 'http://49.37.152.235:3000/api'; // Public IP for external testing
+  // For production, use Vercel backend URL
+  API_BASE_URL = 'https://crusher-backend-delta.vercel.app/api'; // Vercel Backend
 }
 
 // For physical device testing, update to your computer's IP address
