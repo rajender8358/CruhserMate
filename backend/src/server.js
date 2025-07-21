@@ -88,14 +88,13 @@ app.use('*', (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 
-// For Vercel serverless functions
-if (process.env.NODE_ENV === 'production') {
-  // Export for Vercel
-  module.exports = app;
-} else {
-  // Start server for local development
-  app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
-    console.log(`📊 Database: ${process.env.DB_NAME || 'crushermate'}`);
-  });
-}
+// Start server
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 CrusherMate API Server Started!`);
+  console.log(`📡 Server: http://localhost:${PORT}`);
+  console.log(`🏥 Health: http://localhost:${PORT}/health`);
+  console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`⏰ Started at: ${new Date().toLocaleString()}`);
+});
+
+module.exports = app;

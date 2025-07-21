@@ -6,8 +6,10 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
+    "build": "echo 'Build completed - Node.js app ready for deployment'",
     "test": "jest",
-    "vercel-build": "echo 'Build completed'"
+    "lint": "eslint src/",
+    "clean": "rm -rf node_modules package-lock.json && npm install"
   },
   "engines": {
     "node": ">=18.0.0",
