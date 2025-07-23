@@ -13,16 +13,20 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import theme from '../assets/theme';
 import apiService from '../services/apiService';
+import { useAuth } from '../context/AuthContext';
+import { APP_ROUTES } from '../navigations/Routes';
 
 const { width } = Dimensions.get('window');
 
 const TrackScreen = ({ navigation }) => {
+  const { logout } = useAuth();
   const [todayEntries, setTodayEntries] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [userDetails, setUserDetails] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [userRole, setUserRole] = useState('user');
 
   useEffect(() => {
     checkAuthentication();
@@ -30,25 +34,11 @@ const TrackScreen = ({ navigation }) => {
 
   const checkAuthentication = async () => {
     try {
-      const token = await AsyncStorage.getItem('authToken');
-      if (!token) {
-        console.log('🔒 No authentication token found, redirecting to login');
-        navigation.reset({
-          index: 0,
-          routes: [{ name: 'Login' }],
-        });
-        return;
-      }
-
       // Load data if authenticated
       loadUserData();
       loadTodayEntries();
     } catch (error) {
       console.error('❌ Authentication check failed:', error);
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Login' }],
-      });
     }
   };
 
@@ -66,6 +56,7 @@ const TrackScreen = ({ navigation }) => {
       const userData = await AsyncStorage.getItem('userData');
       if (userData) {
         const user = JSON.parse(userData);
+        setUserRole(user.role || 'user');
         setUserDetails({
           name: user.username || 'User',
           email: user.email,
@@ -134,7 +125,7 @@ const TrackScreen = ({ navigation }) => {
 
   const handleEditEntry = entry => {
     // Navigate to TruckEntry screen with pre-filled data for editing
-    navigation.navigate('TruckEntry', {
+    navigation.navigate(APP_ROUTES.TRUCK_ENTRY, {
       editMode: true,
       entryData: entry,
     });
@@ -155,19 +146,16 @@ const TrackScreen = ({ navigation }) => {
           onPress: async () => {
             try {
               // Clear stored authentication data
-              await AsyncStorage.removeItem('authToken');
+              await AsyncStorage.removeItem('userRole');
               await AsyncStorage.removeItem('userData');
 
               // Clear token from API service
               await apiService.clearToken();
 
-              console.log('🔓 User logged out successfully');
+              // Use AuthContext to handle logout
+              await logout();
 
-              // Navigate to login screen
-              navigation.reset({
-                index: 0,
-                routes: [{ name: 'Login' }],
-              });
+              console.log('🔓 User logged out successfully');
             } catch (error) {
               console.error('❌ Logout error:', error);
               Alert.alert('Error', 'Failed to logout. Please try again.', [
@@ -365,6 +353,19 @@ const TrackScreen = ({ navigation }) => {
           </Text>
         </View>
       </View>
+
+      {/* Owner Dashboard Button */}
+      {userRole === 'owner' && (
+        <View style={styles.ownerButtonsContainer}>
+          <TouchableOpacity
+            style={styles.ownerButton}
+            onPress={() => navigation.navigate(APP_ROUTES.DASHBOARD)}
+          >
+            <Text style={styles.ownerButtonIcon}>📊</Text>
+            <Text style={styles.ownerButtonText}>Dashboard</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 
@@ -400,7 +401,7 @@ const TrackScreen = ({ navigation }) => {
       {/* Add Entry Button */}
       <TouchableOpacity
         style={styles.emptyStateButton}
-        onPress={() => navigation.navigate('TruckEntry')}
+        onPress={() => navigation.navigate(APP_ROUTES.TRUCK_ENTRY)}
       >
         <Text style={styles.emptyStateButtonIcon}>+</Text>
         <Text style={styles.emptyStateButtonText}>Add Entry</Text>
@@ -479,7 +480,7 @@ const TrackScreen = ({ navigation }) => {
         <View style={styles.addEntryContainer}>
           <TouchableOpacity
             style={styles.addEntryButton}
-            onPress={() => navigation.navigate('TruckEntry')}
+            onPress={() => navigation.navigate(APP_ROUTES.TRUCK_ENTRY)}
           >
             <Text style={styles.addEntryButtonIcon}>+</Text>
             <Text style={styles.addEntryButtonText}>Add Entry</Text>
@@ -509,7 +510,6 @@ const styles = StyleSheet.create({
   headerLeft: {
     flex: 1,
   },
-
   headerTitle: {
     fontSize: 28,
     fontWeight: 'bold',
@@ -628,6 +628,35 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     color: theme.COLORS.primary,
+  },
+  ownerButtonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 20,
+    gap: 12,
+  },
+  ownerButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.COLORS.primary, // Blue theme color
+    paddingVertical: 12,
+    borderRadius: 8,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  ownerButtonIcon: {
+    fontSize: 18,
+    marginRight: 8,
+  },
+  ownerButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
   entriesContainer: {
     paddingHorizontal: 24,

@@ -3,10 +3,13 @@ const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
+const mongoose = require('mongoose');
 require('dotenv').config();
 
+// Force deployment with updated environment variables
 const connectDB = require('./config/database');
-const errorHandler = require('./middleware/errorHandler');
+const { errorHandler } = require('./middleware/errorHandler');
+const { authenticateToken } = require('./middleware/auth');
 
 // Import routes
 const authRoutes = require('./routes/authRoutes');
@@ -19,8 +22,25 @@ const reportRoutes = require('./routes/reportRoutes');
 
 const app = express();
 
-// Connect to MongoDB
-connectDB();
+// Connect to MongoDB with better error handling
+const initializeServer = async () => {
+  try {
+    console.log('🚀 Starting server initialization...');
+    await connectDB();
+    console.log('✅ Server initialization complete');
+  } catch (error) {
+    console.error('❌ Server initialization failed:', error.message);
+    console.error('🔍 Full error:', error);
+    // Don't exit in serverless environment - just log the error
+  }
+};
+
+// Initialize server but don't block startup - use setTimeout to avoid blocking
+setTimeout(() => {
+  initializeServer().catch(error => {
+    console.error('❌ Server initialization error:', error);
+  });
+}, 100);
 
 // Security middleware
 app.use(helmet());
@@ -63,17 +83,54 @@ app.get('/health', (req, res) => {
     message: 'CrusherMate API Server is running!',
     timestamp: new Date().toISOString(),
     version: '1.0.0',
+    database:
+      mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
   });
+});
+
+// Simple health check without database dependency
+app.get('/ping', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'Pong! Server is responding',
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// Test MongoDB connection endpoint
+app.get('/test-db', async (req, res) => {
+  try {
+    if (mongoose.connection.readyState === 1) {
+      res.status(200).json({
+        success: true,
+        message: 'MongoDB connection successful',
+        database: mongoose.connection.name,
+        state: mongoose.connection.readyState,
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        message: 'MongoDB connection failed',
+        state: mongoose.connection.readyState,
+      });
+    }
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Database test failed',
+      error: error.message,
+    });
+  }
 });
 
 // API routes
 app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/truck-entries', truckEntryRoutes);
-app.use('/api/material-rates', materialRateRoutes);
-app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/config', configRoutes);
-app.use('/api/reports', reportRoutes);
+app.use('/api/users', authenticateToken, userRoutes);
+app.use('/api/truck-entries', authenticateToken, truckEntryRoutes);
+app.use('/api/material-rates', authenticateToken, materialRateRoutes);
+app.use('/api/dashboard', authenticateToken, dashboardRoutes);
+app.use('/api/config', authenticateToken, configRoutes);
+app.use('/api/reports', authenticateToken, reportRoutes);
 
 // Error handling middleware
 app.use(errorHandler);

@@ -1,20 +1,42 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import theme from '../assets/theme';
-import Routes from '../navigations/Routes';
+import { APP_ROUTES } from '../navigations/Routes';
 
 const HomeScreen = ({ navigation }) => {
+  const [userRole, setUserRole] = useState('user');
+
+  useEffect(() => {
+    checkUserRole();
+  }, []);
+
+  const checkUserRole = async () => {
+    try {
+      const userData = await AsyncStorage.getItem('userData');
+      if (userData) {
+        const user = JSON.parse(userData);
+        setUserRole(user.role || 'user');
+      }
+    } catch (error) {
+      console.error('Error checking user role:', error);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>CrusherMate</Text>
         <Text style={styles.headerSubtitle}>Track your truck operations</Text>
+        {userRole === 'owner' && (
+          <Text style={styles.ownerBadge}>👑 Owner Dashboard</Text>
+        )}
       </View>
 
       <View style={styles.buttonsContainer}>
         <TouchableOpacity
           style={[styles.actionButton, styles.primaryButton]}
-          onPress={() => navigation.navigate(Routes.TRACK)}
+          onPress={() => navigation.navigate(APP_ROUTES.TRACK)}
         >
           <Text style={styles.buttonIcon}>📋</Text>
           <Text style={styles.buttonText}>Today's Track</Text>
@@ -25,36 +47,26 @@ const HomeScreen = ({ navigation }) => {
 
         <TouchableOpacity
           style={[styles.actionButton, styles.secondaryButton]}
-          onPress={() => navigation.navigate(Routes.TRUCK_ENTRY)}
+          onPress={() => navigation.navigate(APP_ROUTES.TRUCK_ENTRY)}
         >
           <Text style={styles.buttonIcon}>🚛</Text>
           <Text style={styles.buttonText}>Add Entry</Text>
           <Text style={styles.buttonSubtext}>Record new truck operation</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.actionButton, styles.tertiaryButton]}
-          onPress={() => navigation.navigate(Routes.DASHBOARD)}
-        >
-          <Text style={styles.buttonIcon}>📊</Text>
-          <Text style={[styles.buttonText, styles.tertiaryText]}>
-            Dashboard
-          </Text>
-          <Text style={[styles.buttonSubtext, styles.tertiaryText]}>
-            View analytics and insights
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.actionButton, styles.tertiaryButton]}
-          onPress={() => navigation.navigate(Routes.REPORTS)}
-        >
-          <Text style={styles.buttonIcon}>📈</Text>
-          <Text style={[styles.buttonText, styles.tertiaryText]}>Reports</Text>
-          <Text style={[styles.buttonSubtext, styles.tertiaryText]}>
-            Generate detailed reports
-          </Text>
-        </TouchableOpacity>
+        {/* Owner-only features */}
+        {userRole === 'owner' && (
+          <TouchableOpacity
+            style={[styles.actionButton, styles.ownerButton]}
+            onPress={() => navigation.navigate(APP_ROUTES.DASHBOARD)}
+          >
+            <Text style={styles.buttonIcon}>📊</Text>
+            <Text style={styles.buttonText}>Owner Dashboard</Text>
+            <Text style={styles.buttonSubtext}>
+              Analytics and business insights
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );
@@ -107,6 +119,9 @@ const styles = StyleSheet.create({
   tertiaryButton: {
     backgroundColor: theme.COLORS.lightGray,
   },
+  ownerButton: {
+    backgroundColor: '#8B5CF6', // Purple color for owner features
+  },
   buttonIcon: {
     fontSize: 32,
     marginBottom: 8,
@@ -126,6 +141,13 @@ const styles = StyleSheet.create({
   tertiaryText: {
     color: theme.COLORS.primary,
     opacity: 1,
+  },
+  ownerBadge: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#8B5CF6',
+    marginTop: 8,
+    textAlign: 'center',
   },
 });
 

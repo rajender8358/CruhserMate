@@ -1,0 +1,4 @@
+/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/android/app/.cxx/Debug/486r474s/x86/CMakeFiles/_CMakeLTOTest-CXX/bin/CMakeFiles/foo.dir
+/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/android/app/.cxx/Debug/486r474s/x86/CMakeFiles/_CMakeLTOTest-CXX/bin/CMakeFiles/boo.dir
+/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/android/app/.cxx/Debug/486r474s/x86/CMakeFiles/_CMakeLTOTest-CXX/bin/CMakeFiles/edit_cache.dir
+/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/android/app/.cxx/Debug/486r474s/x86/CMakeFiles/_CMakeLTOTest-CXX/bin/CMakeFiles/rebuild_cache.dir

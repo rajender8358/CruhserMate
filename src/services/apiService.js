@@ -2,16 +2,17 @@
 import { Platform } from 'react-native';
 
 let API_BASE_URL;
-if (__DEV__) {
-  if (Platform.OS === 'ios') {
-    API_BASE_URL = 'http://localhost:3000/api'; // iOS Simulator
-  } else {
-    API_BASE_URL = 'http://192.168.29.243:3000/api'; // Android Emulator & Local Network
-  }
-} else {
-  // For production, use Vercel backend URL
-  API_BASE_URL = 'https://crusher-backend-delta.vercel.app/api'; // Vercel Backend
-}
+// Use live backend for both development and production
+API_BASE_URL = 'https://crushermate-backend.vercel.app/api'; // Live Vercel Backend
+
+// Uncomment below for local development testing
+// if (__DEV__) {
+//   if (Platform.OS === 'ios') {
+//     API_BASE_URL = 'http://localhost:3000/api'; // iOS Simulator
+//   } else {
+//     API_BASE_URL = 'http://192.168.29.243:3000/api'; // Android Emulator & Local Network
+//   }
+// }
 
 // For physical device testing, update to your computer's IP address
 // Example: http://192.168.1.100:3000/api
@@ -30,7 +31,7 @@ class ApiService {
     if (this.initialized) return;
 
     try {
-      const token = await AsyncStorage.getItem('authToken');
+      const token = await AsyncStorage.getItem('userToken');
       console.log(
         '🔍 Initializing API service, token found:',
         token ? 'Yes' : 'No',
@@ -55,10 +56,10 @@ class ApiService {
     this.token = token;
     try {
       if (token) {
-        await AsyncStorage.setItem('authToken', token);
+        await AsyncStorage.setItem('userToken', token);
         console.log('🔑 Token saved to storage');
       } else {
-        await AsyncStorage.removeItem('authToken');
+        await AsyncStorage.removeItem('userToken');
         console.log('🔑 Token removed from storage');
       }
     } catch (error) {
@@ -70,7 +71,7 @@ class ApiService {
   async clearToken() {
     this.token = null;
     try {
-      await AsyncStorage.removeItem('authToken');
+      await AsyncStorage.removeItem('userToken');
       console.log('🔑 Token cleared from storage');
     } catch (error) {
       console.error('❌ Failed to clear token from storage:', error);
@@ -79,7 +80,7 @@ class ApiService {
 
   // Debug method to check token status
   async debugTokenStatus() {
-    const storedToken = await AsyncStorage.getItem('authToken');
+    const storedToken = await AsyncStorage.getItem('userToken');
     console.log('🔍 Debug Token Status:');
     console.log('  - Stored token:', storedToken ? 'Yes' : 'No');
     console.log('  - Memory token:', this.token ? 'Yes' : 'No');

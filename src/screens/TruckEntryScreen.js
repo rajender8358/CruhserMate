@@ -20,6 +20,7 @@ import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import theme from '../assets/theme';
 import apiService from '../services/apiService';
+import { APP_ROUTES } from '../navigations/Routes';
 
 const { width } = Dimensions.get('window');
 
@@ -83,25 +84,11 @@ const TruckEntryScreen = ({ navigation, route }) => {
 
   const checkAuthentication = async () => {
     try {
-      const token = await AsyncStorage.getItem('authToken');
-      if (!token) {
-        console.log('🔒 No authentication token found, redirecting to login');
-        navigation.reset({
-          index: 0,
-          routes: [{ name: 'Login' }],
-        });
-        return;
-      }
-
       // Load data if authenticated
       checkAllPermissions();
       loadAppConfiguration();
     } catch (error) {
       console.error('❌ Authentication check failed:', error);
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Login' }],
-      });
     }
   };
 
@@ -590,7 +577,7 @@ const TruckEntryScreen = ({ navigation, route }) => {
           } else {
             // Reset form and navigate to Track for new entries
             resetForm();
-            navigation.navigate('Track');
+            navigation.navigate(APP_ROUTES.TRACK);
           }
         }, 2000);
       } else {
@@ -967,19 +954,20 @@ const TruckEntryScreen = ({ navigation, route }) => {
             <View style={styles.ownerButtonsRow}>
               <TouchableOpacity
                 style={styles.ownerButton}
-                onPress={() => navigation.navigate('Dashboard')}
+                onPress={() => navigation.navigate(APP_ROUTES.DASHBOARD)}
               >
                 <Text style={styles.ownerButtonIcon}>📊</Text>
                 <Text style={styles.ownerButtonText}>Dashboard</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity
+              {/* Reports feature coming soon */}
+              {/* <TouchableOpacity
                 style={styles.ownerButton}
                 onPress={() => navigation.navigate('Reports')}
               >
                 <Text style={styles.ownerButtonIcon}>📈</Text>
                 <Text style={styles.ownerButtonText}>Reports</Text>
-              </TouchableOpacity>
+              </TouchableOpacity> */}
             </View>
           </View>
         )}

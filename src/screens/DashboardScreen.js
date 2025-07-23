@@ -3,82 +3,43 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   ScrollView,
-  Modal,
+  TouchableOpacity,
   Alert,
+  ActivityIndicator,
+  Linking,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { API_BASE_URL } from '../services/apiService';
 import theme from '../assets/theme';
-import { exportToCSV, exportToPDF } from '../utils/exportUtils';
 
-const DashboardScreen = ({ navigation }) => {
-  const [selectedFilter, setSelectedFilter] = useState('Today');
-  const [showFilterModal, setShowFilterModal] = useState(false);
-  const [userRole, setUserRole] = useState('user');
+const DashboardScreen = () => {
+  const navigation = useNavigation();
+  const [loading, setLoading] = useState(true);
   const [dashboardData, setDashboardData] = useState({
+    totalEntries: 0,
+    todayEntries: 0,
     totalSales: 0,
     totalRawStone: 0,
-    trucksIn: 0,
-    trucksOut: 0,
-    totalExpenses: 0,
-    netIncome: 0,
+    monthlyRevenue: 0,
+    topMaterials: [],
+    recentEntries: [],
   });
-
-  // Filter options
-  const filterOptions = [
-    { label: 'Today', value: 'Today' },
-    { label: 'This Week', value: 'This Week' },
-    { label: 'Custom Range', value: 'Custom Range' },
-  ];
-
-  // Sample data - in real app, this would come from database
-  const sampleData = {
-    Today: {
-      totalSales: 45000,
-      totalRawStone: 15000,
-      trucksIn: 8,
-      trucksOut: 6,
-      totalExpenses: 5000,
-    },
-    'This Week': {
-      totalSales: 280000,
-      totalRawStone: 95000,
-      trucksIn: 42,
-      trucksOut: 38,
-      totalExpenses: 25000,
-    },
-    'Custom Range': {
-      totalSales: 150000,
-      totalRawStone: 50000,
-      trucksIn: 20,
-      trucksOut: 18,
-      totalExpenses: 12000,
-    },
-  };
+  const [selectedDay, setSelectedDay] = useState('all');
+  const [weekData, setWeekData] = useState({});
+  const [dayData, setDayData] = useState({});
 
   useEffect(() => {
-    // Check user role
     checkUserRole();
-
-    // Load data based on selected filter
-    const data = sampleData[selectedFilter];
-    const netIncome = data.totalSales - data.totalRawStone - data.totalExpenses;
-
-    setDashboardData({
-      ...data,
-      netIncome,
-    });
-  }, [selectedFilter]);
+  }, []);
 
   const checkUserRole = async () => {
     try {
       const userData = await AsyncStorage.getItem('userData');
       if (userData) {
         const user = JSON.parse(userData);
-        setUserRole(user.role || 'user');
-
-        // Redirect non-owners back to Track screen
         if (user.role !== 'owner') {
           Alert.alert(
             'Access Denied',
@@ -86,450 +47,796 @@ const DashboardScreen = ({ navigation }) => {
             [
               {
                 text: 'OK',
-                onPress: () => navigation.replace('Track'),
+                onPress: () => navigation.goBack(),
               },
             ],
           );
-          return; // Exit early to prevent further execution
+          return;
         }
       }
+      fetchDashboardData();
     } catch (error) {
       console.error('Error checking user role:', error);
+      Alert.alert('Error', 'Failed to verify user permissions');
     }
   };
 
-  const formatCurrency = amount => {
-    return `₹${amount.toLocaleString('en-IN')}`;
-  };
+  const getCurrentWeekDates = () => {
+    const today = new Date();
+    const currentDay = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
 
-  // Sample data for quick export
-  const getSampleReportData = () => [
-    {
-      id: '1',
-      date: new Date().toISOString().split('T')[0],
-      entryType: 'Sales',
-      materialType: 'M-Sand',
-      truckNumber: 'KA01AB1234',
-      units: dashboardData.trucksOut || 6,
-      rate: 1500,
-      total: (dashboardData.trucksOut || 6) * 1500,
-    },
-    {
-      id: '2',
-      date: new Date().toISOString().split('T')[0],
-      entryType: 'Raw Stone',
-      materialType: 'N/A',
-      truckNumber: 'MH12CD5678',
-      units: dashboardData.trucksIn || 8,
-      rate: 800,
-      total: (dashboardData.trucksIn || 8) * 800,
-    },
-  ];
+    // Current week (Sunday to Saturday)
+    const daysFromSunday = currentDay;
+    const startDate = new Date(today);
+    startDate.setDate(today.getDate() - daysFromSunday);
+    const endDate = new Date(startDate);
+    endDate.setDate(startDate.getDate() + 6);
 
-  const handleQuickExport = async format => {
-    const reportData = getSampleReportData();
-    const filters = {
-      materialFilter: 'All',
-      entryTypeFilter: 'All',
+    return {
+      startDate: startDate.toISOString().split('T')[0],
+      endDate: endDate.toISOString().split('T')[0],
+      startDateObj: startDate,
+      endDateObj: endDate,
     };
+  };
 
-    if (format === 'PDF') {
-      await exportToPDF(reportData, selectedFilter, filters);
-    } else if (format === 'CSV') {
-      await exportToCSV(reportData, selectedFilter, filters);
+  const getDayDates = dayType => {
+    const weekDates = getCurrentWeekDates();
+    const today = new Date();
+    const currentDay = today.getDay();
+
+    if (dayType === 'all') {
+      return weekDates;
+    }
+
+    // Calculate the date for the selected day
+    const daysFromSunday = currentDay;
+    const weekStart = new Date(today);
+    weekStart.setDate(today.getDate() - daysFromSunday);
+
+    const dayNames = [
+      'sunday',
+      'monday',
+      'tuesday',
+      'wednesday',
+      'thursday',
+      'friday',
+      'saturday',
+    ];
+    const dayIndex = dayNames.indexOf(dayType);
+
+    const selectedDate = new Date(weekStart);
+    selectedDate.setDate(weekStart.getDate() + dayIndex);
+
+    // Only allow past days and today
+    if (selectedDate > today) {
+      return null; // Future day not allowed
+    }
+
+    return {
+      startDate: selectedDate.toISOString().split('T')[0],
+      endDate: selectedDate.toISOString().split('T')[0],
+      startDateObj: selectedDate,
+      endDateObj: selectedDate,
+    };
+  };
+
+  const fetchDashboardData = async () => {
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      if (!token) {
+        Alert.alert('Error', 'Authentication required');
+        return;
+      }
+
+      const dayDates = getDayDates(selectedDay);
+
+      if (!dayDates) {
+        Alert.alert('Error', 'Cannot view future dates');
+        return;
+      }
+
+      const response = await fetch(
+        `${API_BASE_URL}/dashboard/summary?startDate=${dayDates.startDate}&endDate=${dayDates.endDate}`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        setDashboardData(data.data);
+        setDayData(dayDates);
+      } else {
+        const errorData = await response.json();
+        Alert.alert(
+          'Error',
+          errorData.message || 'Failed to fetch dashboard data',
+        );
+      }
+    } catch (error) {
+      console.error('Dashboard fetch error:', error);
+      Alert.alert('Error', 'Network error while fetching dashboard data');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const renderMetricCard = (
+  const handleDownloadPDF = async () => {
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      if (!token) {
+        Alert.alert('Error', 'Authentication required');
+        return;
+      }
+
+      const dayDates = getDayDates(selectedDay);
+      if (!dayDates) {
+        Alert.alert('Error', 'Cannot download future dates');
+        return;
+      }
+
+      const downloadUrl = `${API_BASE_URL}/reports/download/pdf?startDate=${dayDates.startDate}&endDate=${dayDates.endDate}`;
+
+      const supported = await Linking.canOpenURL(downloadUrl);
+      if (supported) {
+        await Linking.openURL(downloadUrl);
+      } else {
+        Alert.alert('Error', 'Cannot open download link');
+      }
+    } catch (error) {
+      console.error('PDF download error:', error);
+      Alert.alert('Error', 'Failed to download PDF');
+    }
+  };
+
+  const handleDownloadCSV = async () => {
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      if (!token) {
+        Alert.alert('Error', 'Authentication required');
+        return;
+      }
+
+      const dayDates = getDayDates(selectedDay);
+      if (!dayDates) {
+        Alert.alert('Error', 'Cannot download future dates');
+        return;
+      }
+
+      const downloadUrl = `${API_BASE_URL}/reports/download/csv?startDate=${dayDates.startDate}&endDate=${dayDates.endDate}`;
+
+      const supported = await Linking.canOpenURL(downloadUrl);
+      if (supported) {
+        await Linking.openURL(downloadUrl);
+      } else {
+        Alert.alert('Error', 'Cannot open download link');
+      }
+    } catch (error) {
+      console.error('CSV download error:', error);
+      Alert.alert('Error', 'Failed to download CSV');
+    }
+  };
+
+  const MetricCard = ({
     title,
     value,
-    icon,
+    subtitle,
     color = theme.COLORS.primary,
-  ) => (
+  }) => (
     <View style={[styles.metricCard, { borderLeftColor: color }]}>
-      <View style={styles.metricHeader}>
-        <Text style={styles.metricIcon}>{icon}</Text>
-        <Text style={styles.metricTitle}>{title}</Text>
-      </View>
-      <Text style={[styles.metricValue, { color }]}>
-        {typeof value === 'number' && title.includes('₹')
-          ? formatCurrency(value)
-          : value}
-      </Text>
+      <Text style={styles.metricTitle}>{title}</Text>
+      <Text style={styles.metricValue}>{value}</Text>
+      {subtitle && <Text style={styles.metricSubtitle}>{subtitle}</Text>}
     </View>
   );
 
-  const renderFilterModal = () => (
-    <Modal
-      visible={showFilterModal}
-      transparent={true}
-      animationType="slide"
-      onRequestClose={() => setShowFilterModal(false)}
-    >
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
-          <Text style={styles.modalTitle}>Select Date Filter</Text>
-          {filterOptions.map(option => (
-            <TouchableOpacity
-              key={option.value}
-              style={[
-                styles.filterOption,
-                selectedFilter === option.value && styles.filterOptionSelected,
-              ]}
-              onPress={() => {
-                setSelectedFilter(option.value);
-                setShowFilterModal(false);
-                if (option.value === 'Custom Range') {
-                  Alert.alert(
-                    'Custom Range',
-                    'Custom date picker will be implemented here',
-                  );
-                }
-              }}
-            >
-              <Text
-                style={[
-                  styles.filterOptionText,
-                  selectedFilter === option.value &&
-                    styles.filterOptionTextSelected,
-                ]}
-              >
-                {option.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-          <TouchableOpacity
-            style={styles.modalCancelButton}
-            onPress={() => setShowFilterModal(false)}
-          >
-            <Text style={styles.modalCancelText}>Cancel</Text>
-          </TouchableOpacity>
-        </View>
+  const RecentEntryCard = ({ entry }) => (
+    <View style={styles.recentEntryCard}>
+      <View style={styles.entryHeader}>
+        <Text style={styles.entryType}>{entry.entryType}</Text>
+        <Text style={styles.entryDate}>
+          {new Date(entry.createdAt).toLocaleDateString()} at {entry.entryTime}
+        </Text>
       </View>
-    </Modal>
+      <Text style={styles.entryDetails}>
+        {entry.materialType || 'N/A'} - {entry.units} units
+      </Text>
+      <Text style={styles.entryPrice}>₹{entry.totalAmount}</Text>
+    </View>
   );
 
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={theme.COLORS.primary} />
+          <Text style={styles.loadingText}>Loading Dashboard...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      <View style={styles.content}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.userInfo}>
-            <Text style={styles.welcomeText}>Dashboard Overview</Text>
-            <Text style={styles.userRole}>
-              {userRole === 'owner' ? 'Owner Dashboard' : 'User Dashboard'}
-            </Text>
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <View style={styles.headerRow}>
+          <View style={styles.titleContainer}>
+            <Text style={styles.headerTitle}>Owner Dashboard</Text>
           </View>
           <TouchableOpacity
             style={styles.backButton}
             onPress={() => navigation.goBack()}
           >
-            <Text style={styles.backText}>← Back</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Date Filter */}
-        <View style={styles.filterSection}>
-          <Text style={styles.filterLabel}>📅 Date Filter:</Text>
-          <TouchableOpacity
-            style={styles.filterButton}
-            onPress={() => setShowFilterModal(true)}
-          >
-            <Text style={styles.filterButtonText}>{selectedFilter}</Text>
-            <Text style={styles.filterArrow}>▼</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Financial Metrics */}
-        <View style={styles.metricsSection}>
-          <Text style={styles.sectionTitle}>Financial Overview</Text>
-
-          {renderMetricCard(
-            'Total Sales ₹',
-            dashboardData.totalSales,
-            '📊',
-            '#27AE60',
-          )}
-
-          {renderMetricCard(
-            'Raw Stone Cost ₹',
-            dashboardData.totalRawStone,
-            '📉',
-            '#E74C3C',
-          )}
-
-          {renderMetricCard(
-            'Total Expenses ₹',
-            dashboardData.totalExpenses,
-            '💸',
-            '#F39C12',
-          )}
-
-          {renderMetricCard(
-            'Net Income ₹',
-            dashboardData.netIncome,
-            '💰',
-            dashboardData.netIncome >= 0 ? '#27AE60' : '#E74C3C',
-          )}
-        </View>
-
-        {/* Truck Operations */}
-        <View style={styles.metricsSection}>
-          <Text style={styles.sectionTitle}>Truck Operations</Text>
-
-          <View style={styles.truckMetricsRow}>
-            {renderMetricCard(
-              'Trucks In',
-              dashboardData.trucksIn,
-              '🚛',
-              '#3498DB',
-            )}
-
-            {renderMetricCard(
-              'Trucks Out',
-              dashboardData.trucksOut,
-              '🚚',
-              '#9B59B6',
-            )}
-          </View>
-        </View>
-
-        {/* Quick Actions */}
-        <View style={styles.actionsSection}>
-          <Text style={styles.sectionTitle}>Quick Actions</Text>
-
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => navigation.navigate('Reports')}
-          >
-            <Text style={styles.actionIcon}>📈</Text>
-            <Text style={styles.actionText}>View Reports</Text>
-            <Text style={styles.actionArrow}>→</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => navigation.navigate('TruckEntry')}
-          >
-            <Text style={styles.actionIcon}>🚛</Text>
-            <Text style={styles.actionText}>New Truck Entry</Text>
-            <Text style={styles.actionArrow}>→</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => handleQuickExport('CSV')}
-          >
-            <Text style={styles.actionIcon}>📊</Text>
-            <Text style={styles.actionText}>Download CSV</Text>
-            <Text style={styles.actionArrow}>↓</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => handleQuickExport('PDF')}
-          >
-            <Text style={styles.actionIcon}>📄</Text>
-            <Text style={styles.actionText}>Download PDF</Text>
-            <Text style={styles.actionArrow}>↓</Text>
+            <Text style={styles.backButtonIcon}>←</Text>
+            <Text style={styles.backButtonText}>Back</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      {renderFilterModal()}
-    </ScrollView>
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Day Filter Section */}
+        <View style={styles.filterSection}>
+          <View style={styles.filterHeader}>
+            <Text style={styles.sectionTitle}>Current Week Filter</Text>
+            <TouchableOpacity
+              style={styles.refreshButton}
+              onPress={fetchDashboardData}
+            >
+              <Text style={styles.refreshButtonText}>Refresh</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.filterButtons}>
+            <TouchableOpacity
+              style={[
+                styles.filterButton,
+                selectedDay === 'all' && styles.filterButtonActive,
+              ]}
+              onPress={() => {
+                setSelectedDay('all');
+                setLoading(true);
+              }}
+            >
+              <Text
+                style={[
+                  styles.filterButtonText,
+                  selectedDay === 'all' && styles.filterButtonTextActive,
+                ]}
+              >
+                All Week
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.filterButton,
+                selectedDay === 'sunday' && styles.filterButtonActive,
+              ]}
+              onPress={() => {
+                setSelectedDay('sunday');
+                setLoading(true);
+              }}
+            >
+              <Text
+                style={[
+                  styles.filterButtonText,
+                  selectedDay === 'sunday' && styles.filterButtonTextActive,
+                ]}
+              >
+                Sun
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.filterButton,
+                selectedDay === 'monday' && styles.filterButtonActive,
+              ]}
+              onPress={() => {
+                setSelectedDay('monday');
+                setLoading(true);
+              }}
+            >
+              <Text
+                style={[
+                  styles.filterButtonText,
+                  selectedDay === 'monday' && styles.filterButtonTextActive,
+                ]}
+              >
+                Mon
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.filterButton,
+                selectedDay === 'tuesday' && styles.filterButtonActive,
+              ]}
+              onPress={() => {
+                setSelectedDay('tuesday');
+                setLoading(true);
+              }}
+            >
+              <Text
+                style={[
+                  styles.filterButtonText,
+                  selectedDay === 'tuesday' && styles.filterButtonTextActive,
+                ]}
+              >
+                Tue
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.filterButton,
+                selectedDay === 'wednesday' && styles.filterButtonActive,
+              ]}
+              onPress={() => {
+                setSelectedDay('wednesday');
+                setLoading(true);
+              }}
+            >
+              <Text
+                style={[
+                  styles.filterButtonText,
+                  selectedDay === 'wednesday' && styles.filterButtonTextActive,
+                ]}
+              >
+                Wed
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.filterButton,
+                selectedDay === 'thursday' && styles.filterButtonActive,
+              ]}
+              onPress={() => {
+                setSelectedDay('thursday');
+                setLoading(true);
+              }}
+            >
+              <Text
+                style={[
+                  styles.filterButtonText,
+                  selectedDay === 'thursday' && styles.filterButtonTextActive,
+                ]}
+              >
+                Thu
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.filterButton,
+                selectedDay === 'friday' && styles.filterButtonActive,
+              ]}
+              onPress={() => {
+                setSelectedDay('friday');
+                setLoading(true);
+              }}
+            >
+              <Text
+                style={[
+                  styles.filterButtonText,
+                  selectedDay === 'friday' && styles.filterButtonTextActive,
+                ]}
+              >
+                Fri
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.filterButton,
+                selectedDay === 'saturday' && styles.filterButtonActive,
+              ]}
+              onPress={() => {
+                setSelectedDay('saturday');
+                setLoading(true);
+              }}
+            >
+              <Text
+                style={[
+                  styles.filterButtonText,
+                  selectedDay === 'saturday' && styles.filterButtonTextActive,
+                ]}
+              >
+                Sat
+              </Text>
+            </TouchableOpacity>
+          </View>
+          {dayData.startDate && (
+            <Text style={styles.weekRange}>
+              {selectedDay === 'all'
+                ? `${new Date(
+                    dayData.startDate,
+                  ).toLocaleDateString()} - ${new Date(
+                    dayData.endDate,
+                  ).toLocaleDateString()}`
+                : new Date(dayData.startDate).toLocaleDateString('en-US', {
+                    weekday: 'long',
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                  })}
+            </Text>
+          )}
+        </View>
+
+        {/* Metrics Section */}
+        <View style={styles.metricsSection}>
+          <Text style={styles.sectionTitle}>Overview</Text>
+          <View style={styles.metricsGrid}>
+            <MetricCard
+              title="Total Entries"
+              value={dashboardData.totalEntries}
+              subtitle="This week"
+              color={theme.COLORS.primary}
+            />
+            <MetricCard
+              title="Today's Entries"
+              value={dashboardData.todayEntries}
+              subtitle="Today"
+              color={theme.COLORS.secondary}
+            />
+            <MetricCard
+              title="Total Sales"
+              value={`₹${dashboardData.totalSales.toLocaleString()}`}
+              subtitle="This week"
+              color="#FF9500"
+            />
+            <MetricCard
+              title="Monthly Revenue"
+              value={`₹${dashboardData.monthlyRevenue.toLocaleString()}`}
+              subtitle="This month"
+              color="#AF52DE"
+            />
+          </View>
+        </View>
+
+        {/* Entry Types Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Entry Types</Text>
+          <View style={styles.entryTypesContainer}>
+            <View style={styles.entryTypeCard}>
+              <Text style={styles.entryTypeTitle}>Sales</Text>
+              <Text style={styles.entryTypeCount}>
+                {dashboardData.totalSales}
+              </Text>
+            </View>
+            <View style={styles.entryTypeCard}>
+              <Text style={styles.entryTypeTitle}>Raw Stone</Text>
+              <Text style={styles.entryTypeCount}>
+                {dashboardData.totalRawStone}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Top Materials Section */}
+        {dashboardData.topMaterials.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Top Materials</Text>
+            {dashboardData.topMaterials.map((material, index) => (
+              <View key={index} style={styles.materialCard}>
+                <Text style={styles.materialName}>{material.name}</Text>
+                <Text style={styles.materialCount}>
+                  {material.count} entries
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Recent Entries Section */}
+        {dashboardData.recentEntries.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Recent Entries</Text>
+            {dashboardData.recentEntries.map((entry, index) => (
+              <RecentEntryCard key={index} entry={entry} />
+            ))}
+          </View>
+        )}
+
+        {/* Download Buttons */}
+        <View style={styles.actionButtons}>
+          <TouchableOpacity
+            style={[
+              styles.actionButton,
+              { backgroundColor: theme.COLORS.primary },
+            ]}
+            onPress={handleDownloadPDF}
+          >
+            <Text style={styles.actionButtonText}>📄 Download PDF</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.actionButton,
+              { backgroundColor: theme.COLORS.primary },
+            ]}
+            onPress={handleDownloadCSV}
+          >
+            <Text style={styles.actionButtonText}>📊 Download CSV</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.COLORS.white,
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: 24,
-    paddingTop: 40,
-    paddingBottom: 30,
+    backgroundColor: theme.COLORS.background || '#F8F9FA',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 30,
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    backgroundColor: theme.COLORS.white,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.COLORS.lightGray,
   },
-  userInfo: {
-    flex: 1,
-  },
-  welcomeText: {
+  headerTitle: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: theme.COLORS.text,
-    marginBottom: 4,
+    color: '#1A1A1A',
   },
-  userRole: {
-    fontSize: 16,
-    color: theme.COLORS.darkGray,
-  },
-  backButton: {
-    backgroundColor: theme.COLORS.lightGray,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  backText: {
-    color: theme.COLORS.primary,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  filterSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 30,
-  },
-  filterLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: theme.COLORS.text,
-    marginRight: 12,
-  },
-  filterButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: theme.COLORS.lightGray,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 8,
-    minWidth: 120,
-  },
-  filterButtonText: {
-    fontSize: 14,
-    color: theme.COLORS.text,
-    flex: 1,
-  },
-  filterArrow: {
-    fontSize: 12,
-    color: theme.COLORS.darkGray,
-    marginLeft: 8,
-  },
-  metricsSection: {
-    marginBottom: 30,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: theme.COLORS.text,
-    marginBottom: 16,
-  },
-  metricCard: {
-    backgroundColor: theme.COLORS.white,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    borderLeftWidth: 4,
-    shadowColor: theme.COLORS.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  metricHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  metricIcon: {
-    fontSize: 20,
-    marginRight: 8,
-  },
-  metricTitle: {
-    fontSize: 14,
-    color: theme.COLORS.darkGray,
-    fontWeight: '500',
-  },
-  metricValue: {
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  truckMetricsRow: {
+  headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 12,
+    alignItems: 'center',
   },
-  actionsSection: {
-    marginBottom: 20,
+  titleContainer: {
+    flex: 1,
   },
-  actionButton: {
+  backButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     backgroundColor: theme.COLORS.lightGray,
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
+    borderRadius: 20,
   },
-  actionIcon: {
-    fontSize: 20,
-    marginRight: 12,
+  backButtonIcon: {
+    fontSize: 18,
+    color: theme.COLORS.primary,
+    marginRight: 6,
+    fontWeight: 'bold',
   },
-  actionText: {
-    fontSize: 16,
-    color: theme.COLORS.text,
+  backButtonText: {
+    fontSize: 14,
+    color: theme.COLORS.primary,
+    fontWeight: '600',
+  },
+  refreshButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: theme.COLORS.primary,
+    borderRadius: 6,
+  },
+  refreshButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  content: {
     flex: 1,
+    paddingHorizontal: 20,
+  },
+  filterSection: {
+    marginTop: 20,
+  },
+  filterHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  filterButtons: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 10,
+  },
+  filterButton: {
+    flex: 1,
+    minWidth: 60,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    backgroundColor: '#F0F0F0',
+    alignItems: 'center',
+  },
+  filterButtonActive: {
+    backgroundColor: theme.COLORS.primary,
+  },
+  filterButtonText: {
+    fontSize: 12,
     fontWeight: '500',
+    color: '#666',
   },
-  actionArrow: {
-    fontSize: 16,
-    color: theme.COLORS.darkGray,
+  filterButtonTextActive: {
+    color: '#FFFFFF',
   },
-  // Modal Styles
-  modalOverlay: {
+  weekRange: {
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  loadingContainer: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  modalContent: {
-    backgroundColor: theme.COLORS.white,
-    borderRadius: 16,
-    padding: 20,
-    width: '80%',
-    maxHeight: '60%',
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#666',
   },
-  modalTitle: {
-    fontSize: 18,
+  metricsSection: {
+    marginTop: 20,
+  },
+  section: {
+    marginTop: 25,
+  },
+  sectionTitle: {
+    fontSize: 20,
     fontWeight: 'bold',
-    color: theme.COLORS.text,
-    marginBottom: 16,
-    textAlign: 'center',
+    color: '#1A1A1A',
+    marginBottom: 15,
   },
-  filterOption: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
+  metricsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  metricCard: {
+    width: '48%',
+    backgroundColor: '#FFFFFF',
+    padding: 15,
+    borderRadius: 12,
+    marginBottom: 10,
+    borderLeftWidth: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  metricTitle: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 5,
+  },
+  metricValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1A1A1A',
+    marginBottom: 2,
+  },
+  metricSubtitle: {
+    fontSize: 12,
+    color: '#999',
+  },
+  entryTypesContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  entryTypeCard: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    padding: 20,
+    borderRadius: 12,
+    marginHorizontal: 5,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  entryTypeTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#666',
     marginBottom: 8,
   },
-  filterOptionSelected: {
-    backgroundColor: theme.COLORS.primary,
-  },
-  filterOptionText: {
-    fontSize: 16,
-    color: theme.COLORS.text,
-  },
-  filterOptionTextSelected: {
-    color: theme.COLORS.white,
+  entryTypeCount: {
+    fontSize: 28,
     fontWeight: 'bold',
+    color: '#007AFF',
   },
-  modalCancelButton: {
-    backgroundColor: theme.COLORS.lightGray,
+  materialCard: {
+    backgroundColor: '#FFFFFF',
+    padding: 15,
     borderRadius: 8,
-    padding: 12,
-    marginTop: 16,
+    marginBottom: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
   },
-  modalCancelText: {
+  materialName: {
     fontSize: 16,
-    color: theme.COLORS.darkGray,
     fontWeight: '500',
+    color: '#1A1A1A',
+  },
+  materialCount: {
+    fontSize: 14,
+    color: '#666',
+  },
+  recentEntryCard: {
+    backgroundColor: '#FFFFFF',
+    padding: 15,
+    borderRadius: 8,
+    marginBottom: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  entryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  entryType: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#007AFF',
+    textTransform: 'uppercase',
+  },
+  entryDate: {
+    fontSize: 12,
+    color: '#999',
+  },
+  entryDetails: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 4,
+  },
+  entryPrice: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#34C759',
+  },
+  actionButtons: {
+    marginTop: 30,
+    marginBottom: 20,
+  },
+  actionButton: {
+    backgroundColor: theme.COLORS.primary,
+    paddingVertical: 15,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  actionButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  secondaryButton: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#007AFF',
+  },
+  secondaryButtonText: {
+    color: '#007AFF',
   },
 });
 

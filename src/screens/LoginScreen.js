@@ -13,9 +13,11 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import theme from '../assets/theme';
 import apiService from '../services/apiService';
-import Routes from '../navigations/Routes';
+import { AUTH_ROUTES } from '../navigations/Routes';
+import { useAuth } from '../context/AuthContext';
 
 const LoginScreen = ({ navigation }) => {
+  const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
@@ -82,37 +84,17 @@ const LoginScreen = ({ navigation }) => {
 
       if (response.success) {
         // Store user data
+        await AsyncStorage.setItem('userRole', response.data.user.role);
         await AsyncStorage.setItem(
           'userData',
           JSON.stringify(response.data.user),
         );
 
-        // Token is automatically saved by apiService.login()
         console.log('✅ Login successful:', response.data.user.username);
         console.log('🔑 Token saved:', response.data.token ? 'Yes' : 'No');
 
-        // Verify token is saved
-        const savedToken = await AsyncStorage.getItem('authToken');
-        console.log(
-          '🔍 Saved token check:',
-          savedToken ? 'Token exists' : 'No token found',
-        );
-
-        // Debug API service token status after login
-        await apiService.debugTokenStatus();
-
-        console.log('✅ Login successful:', response.data.user.username);
-
-        Alert.alert(
-          'Login Successful! 🎉',
-          `Welcome back, ${response.data.user.username}! You have been logged in successfully.`,
-          [
-            {
-              text: 'OK',
-              onPress: () => navigation.replace(Routes.TRACK),
-            },
-          ],
-        );
+        // Use the AuthContext to update authentication state
+        await login(response.data.token);
       } else {
         setErrorMessage(response.message || 'Login failed');
       }
@@ -156,7 +138,7 @@ const LoginScreen = ({ navigation }) => {
 
   const handleSignUp = () => {
     // Navigate to sign up screen
-    navigation.navigate(Routes.REGISTER);
+    navigation.navigate(AUTH_ROUTES.REGISTER);
   };
 
   const handleForgotPassword = () => {

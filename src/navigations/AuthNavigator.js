@@ -1,8 +1,8 @@
 import React from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
-import Routes from './Routes';
+import { AUTH_ROUTES } from './Routes';
 
-// Import your authentication screens here
+// Import auth screens
 import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
 
@@ -10,10 +10,12 @@ const Stack = createStackNavigator();
 
 const AuthNavigator = () => {
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name={Routes.LOGIN} component={LoginScreen} />
-      <Stack.Screen name={Routes.REGISTER} component={RegisterScreen} />
-      {/* Add other auth screens here */}
+    <Stack.Navigator
+      screenOptions={{ headerShown: false }}
+      initialRouteName={AUTH_ROUTES.LOGIN}
+    >
+      <Stack.Screen name={AUTH_ROUTES.LOGIN} component={LoginScreen} />
+      <Stack.Screen name={AUTH_ROUTES.REGISTER} component={RegisterScreen} />
     </Stack.Navigator>
   );
 };

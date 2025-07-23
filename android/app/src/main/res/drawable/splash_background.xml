@@ -3,13 +3,10 @@
     <!-- White background -->
     <item android:drawable="@color/splash_background" />
     
-    <!-- Logo centered with smaller size -->
-    <item>
+    <!-- Logo centered with much smaller size -->
+    <item android:gravity="center" android:width="40dp" android:height="40dp">
         <bitmap
-            android:gravity="center"
-            android:src="@drawable/crusher_logo"
-            android:scaleType="fitCenter"
-            android:width="120dp"
-            android:height="120dp" />
+            android:src="@drawable/crusher_logo_small"
+            android:scaleType="fitCenter" />
     </item>
 </layer-list> 

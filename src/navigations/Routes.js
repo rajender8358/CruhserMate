@@ -1,15 +1,22 @@
-export default {
-  // Auth Routes
+// Auth Routes
+export const AUTH_ROUTES = {
   LOGIN: 'Login',
   REGISTER: 'Register',
   FORGOT_PASSWORD: 'Forgot Password',
+};
 
-  // App Routes
+// App Routes
+export const APP_ROUTES = {
   HOME: 'Home',
   TRUCK_ENTRY: 'TruckEntry',
   TRACK: 'Track',
   DASHBOARD: 'Dashboard',
-  REPORTS: 'Reports',
   PROFILE: 'Profile',
   SETTINGS: 'Settings',
+};
+
+// Main Routes
+export const MAIN_ROUTES = {
+  AUTH: 'Auth',
+  APP: 'App',
 };

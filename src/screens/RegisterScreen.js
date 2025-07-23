@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import theme from '../assets/theme';
 import apiService from '../services/apiService';
-import Routes from '../navigations/Routes';
+import { AUTH_ROUTES } from '../navigations/Routes';
 
 const RegisterScreen = ({ navigation }) => {
   const [username, setUsername] = useState('');
@@ -130,7 +130,7 @@ const RegisterScreen = ({ navigation }) => {
           [
             {
               text: 'OK',
-              onPress: () => navigation.replace(Routes.LOGIN),
+              onPress: () => navigation.replace(AUTH_ROUTES.LOGIN),
             },
           ],
         );

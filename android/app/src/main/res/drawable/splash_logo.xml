@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:gravity="center">
+        <bitmap
+            android:src="@drawable/crusher_logo_small"
+            android:scaleType="fitCenter"
+            android:gravity="center" />
+    </item>
+</layer-list> 

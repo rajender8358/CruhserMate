@@ -1,0 +1,92 @@
+{
+  "buildFiles": [
+    "/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/node_modules/@react-native-async-storage/async-storage/android/build/generated/source/codegen/jni/CMakeLists.txt",
+    "/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/node_modules/react-native-gesture-handler/android/build/generated/source/codegen/jni/CMakeLists.txt",
+    "/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/node_modules/react-native-image-picker/android/build/generated/source/codegen/jni/CMakeLists.txt",
+    "/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/node_modules/react-native-reanimated/android/build/generated/source/codegen/jni/CMakeLists.txt",
+    "/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/node_modules/react-native-safe-area-context/android/src/main/jni/CMakeLists.txt",
+    "/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/node_modules/react-native-screens/android/src/main/jni/CMakeLists.txt",
+    "/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/node_modules/react-native/ReactAndroid/cmake-utils/default-app-setup/CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "/Users/rgarlapallay/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+      "-C",
+      "/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/android/app/.cxx/RelWithDebInfo/5c4c3o34/x86_64",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "/Users/rgarlapallay/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+    "-C",
+    "/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/android/app/.cxx/RelWithDebInfo/5c4c3o34/x86_64",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "appmodules::@6890427a1f51a3e7e1df": {
+      "toolchain": "toolchain",
+      "abi": "x86_64",
+      "artifactName": "appmodules",
+      "output": "/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/android/app/build/intermediates/cxx/RelWithDebInfo/5c4c3o34/obj/x86_64/libappmodules.so",
+      "runtimeFiles": [
+        "/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/android/app/build/intermediates/cxx/RelWithDebInfo/5c4c3o34/obj/x86_64/libreact_codegen_safeareacontext.so",
+        "/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/android/app/build/intermediates/cxx/RelWithDebInfo/5c4c3o34/obj/x86_64/libreact_codegen_rnscreens.so",
+        "/Users/rgarlapallay/.gradle/caches/8.14.1/transforms/b6a6ccfe82730aba80016e7d9940f54a/transformed/fbjni-0.7.0/prefab/modules/fbjni/libs/android.x86_64/libfbjni.so",
+        "/Users/rgarlapallay/.gradle/caches/8.14.1/transforms/60eef7dfacf480bffc823686b1403bef/transformed/react-android-0.80.1-release/prefab/modules/jsi/libs/android.x86_64/libjsi.so",
+        "/Users/rgarlapallay/.gradle/caches/8.14.1/transforms/60eef7dfacf480bffc823686b1403bef/transformed/react-android-0.80.1-release/prefab/modules/reactnative/libs/android.x86_64/libreactnative.so"
+      ]
+    },
+    "react_codegen_RNImagePickerSpec::@f66ee9a2efecfb28bee4": {
+      "toolchain": "toolchain",
+      "abi": "x86_64",
+      "artifactName": "react_codegen_RNImagePickerSpec"
+    },
+    "react_codegen_rnasyncstorage::@1596841e19ec5b9eeffe": {
+      "toolchain": "toolchain",
+      "abi": "x86_64",
+      "artifactName": "react_codegen_rnasyncstorage"
+    },
+    "react_codegen_rngesturehandler_codegen::@39f233abcd2c728bc6ec": {
+      "toolchain": "toolchain",
+      "abi": "x86_64",
+      "artifactName": "react_codegen_rngesturehandler_codegen"
+    },
+    "react_codegen_rnreanimated::@8afabad14bfffa3f8b9a": {
+      "toolchain": "toolchain",
+      "abi": "x86_64",
+      "artifactName": "react_codegen_rnreanimated"
+    },
+    "react_codegen_rnscreens::@25bcbd507e98d3a854ad": {
+      "toolchain": "toolchain",
+      "abi": "x86_64",
+      "artifactName": "react_codegen_rnscreens",
+      "output": "/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/android/app/build/intermediates/cxx/RelWithDebInfo/5c4c3o34/obj/x86_64/libreact_codegen_rnscreens.so",
+      "runtimeFiles": [
+        "/Users/rgarlapallay/.gradle/caches/8.14.1/transforms/60eef7dfacf480bffc823686b1403bef/transformed/react-android-0.80.1-release/prefab/modules/reactnative/libs/android.x86_64/libreactnative.so",
+        "/Users/rgarlapallay/.gradle/caches/8.14.1/transforms/60eef7dfacf480bffc823686b1403bef/transformed/react-android-0.80.1-release/prefab/modules/jsi/libs/android.x86_64/libjsi.so",
+        "/Users/rgarlapallay/.gradle/caches/8.14.1/transforms/b6a6ccfe82730aba80016e7d9940f54a/transformed/fbjni-0.7.0/prefab/modules/fbjni/libs/android.x86_64/libfbjni.so"
+      ]
+    },
+    "react_codegen_safeareacontext::@7984cd80db47aa7b952a": {
+      "toolchain": "toolchain",
+      "abi": "x86_64",
+      "artifactName": "react_codegen_safeareacontext",
+      "output": "/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/android/app/build/intermediates/cxx/RelWithDebInfo/5c4c3o34/obj/x86_64/libreact_codegen_safeareacontext.so",
+      "runtimeFiles": [
+        "/Users/rgarlapallay/.gradle/caches/8.14.1/transforms/b6a6ccfe82730aba80016e7d9940f54a/transformed/fbjni-0.7.0/prefab/modules/fbjni/libs/android.x86_64/libfbjni.so",
+        "/Users/rgarlapallay/.gradle/caches/8.14.1/transforms/60eef7dfacf480bffc823686b1403bef/transformed/react-android-0.80.1-release/prefab/modules/jsi/libs/android.x86_64/libjsi.so",
+        "/Users/rgarlapallay/.gradle/caches/8.14.1/transforms/60eef7dfacf480bffc823686b1403bef/transformed/react-android-0.80.1-release/prefab/modules/reactnative/libs/android.x86_64/libreactnative.so"
+      ]
+    }
+  },
+  "toolchains": {
+    "toolchain": {
+      "cCompilerExecutable": "/Users/rgarlapallay/Library/Android/sdk/ndk/27.1.12297006/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang.lld",
+      "cppCompilerExecutable": "/Users/rgarlapallay/Library/Android/sdk/ndk/27.1.12297006/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang++.lld"
+    }
+  },
+  "cFileExtensions": [],
+  "cppFileExtensions": [
+    "cpp"
+  ]
+}
