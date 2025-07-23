@@ -18,16 +18,17 @@ import { useAuth } from '../context/AuthContext';
 
 const LoginScreen = ({ navigation }) => {
   const { login } = useAuth();
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
 
-  const validateEmail = email => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
+  const validateUsername = username => {
+    // Username should be 3-15 characters, alphanumeric and underscore only
+    const usernameRegex = /^[a-zA-Z0-9_]{3,15}$/;
+    return usernameRegex.test(username);
   };
 
   const clearMessages = () => {
@@ -40,8 +41,8 @@ const LoginScreen = ({ navigation }) => {
     clearMessages();
 
     // Validate empty fields
-    if (!email.trim()) {
-      setErrorMessage('Please enter your email address');
+    if (!username.trim()) {
+      setErrorMessage('Please enter your username');
       return;
     }
     if (!password.trim()) {
@@ -49,9 +50,11 @@ const LoginScreen = ({ navigation }) => {
       return;
     }
 
-    // Validate email format
-    if (!validateEmail(email)) {
-      setErrorMessage('Please enter a valid email address');
+    // Validate username format
+    if (!validateUsername(username)) {
+      setErrorMessage(
+        'Please enter a valid username (3-15 characters, letters, numbers, underscore only)',
+      );
       return;
     }
 
@@ -62,75 +65,16 @@ const LoginScreen = ({ navigation }) => {
     }
 
     setLoading(true);
-
-    // Test connection first
+    setErrorMessage('');
     try {
-      console.log('🔍 Testing connection to backend...');
-      await apiService.testConnection();
-      console.log('✅ Backend connection successful');
-    } catch (connectionError) {
-      console.error('❌ Backend connection failed:', connectionError);
-      setErrorMessage(
-        'Cannot connect to server. Please check if the backend is running.',
-      );
-      setLoading(false);
-      return;
-    }
-
-    try {
-      console.log('🔐 Attempting login with:', email);
-
-      const response = await apiService.login(email, password);
-
+      const response = await apiService.login(username, password);
       if (response.success) {
-        // Store user data
-        await AsyncStorage.setItem('userRole', response.data.user.role);
-        await AsyncStorage.setItem(
-          'userData',
-          JSON.stringify(response.data.user),
-        );
-
-        console.log('✅ Login successful:', response.data.user.username);
-        console.log('🔑 Token saved:', response.data.token ? 'Yes' : 'No');
-
-        // Use the AuthContext to update authentication state
-        await login(response.data.token);
+        login(response.data.user, response.data.token);
       } else {
         setErrorMessage(response.message || 'Login failed');
       }
     } catch (error) {
-      console.error('❌ Login error:', error);
-
-      let errorMessage =
-        'Unable to connect to server. Please check your internet connection.';
-
-      if (error.message) {
-        if (error.message.includes('Invalid email or password')) {
-          errorMessage = 'Invalid email or password. Please try again.';
-        } else if (
-          error.message.includes('Network') ||
-          error.message.includes('fetch')
-        ) {
-          errorMessage =
-            'Network error. Please check your connection and try again.';
-        } else if (
-          error.message.includes('timeout') ||
-          error.message.includes('AbortSignal') ||
-          error.message.includes('Request timeout after 30 seconds')
-        ) {
-          errorMessage = 'Request timed out. Please try again.';
-        } else if (
-          error.message.includes('ENOTFOUND') ||
-          error.message.includes('ECONNREFUSED')
-        ) {
-          errorMessage =
-            'Cannot connect to server. Please check if the backend is running.';
-        } else {
-          errorMessage = error.message;
-        }
-      }
-
-      setErrorMessage(errorMessage);
+      setErrorMessage(error.message || 'An error occurred');
     } finally {
       setLoading(false);
     }
@@ -167,7 +111,7 @@ const LoginScreen = ({ navigation }) => {
 
         {/* Input Section */}
         <View style={styles.inputSection}>
-          {/* Email Input */}
+          {/* Username Input */}
           <View style={styles.inputContainer}>
             <View style={styles.inputWrapper}>
               <Image
@@ -176,16 +120,15 @@ const LoginScreen = ({ navigation }) => {
               />
               <TextInput
                 style={styles.textInput}
-                placeholder="Email"
+                placeholder="Username"
                 placeholderTextColor={theme.COLORS.placeholder}
-                value={email}
+                value={username}
                 onChangeText={text => {
-                  setEmail(text);
+                  setUsername(text);
                   clearMessages();
                 }}
                 autoCapitalize="none"
-                keyboardType="email-address"
-                autoComplete="email"
+                autoComplete="username"
               />
             </View>
           </View>

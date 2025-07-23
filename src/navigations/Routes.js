@@ -7,10 +7,10 @@ export const AUTH_ROUTES = {
 
 // App Routes
 export const APP_ROUTES = {
-  HOME: 'Home',
   TRUCK_ENTRY: 'TruckEntry',
   TRACK: 'Track',
   DASHBOARD: 'Dashboard',
+  MATERIAL_RATES: 'MaterialRates',
   PROFILE: 'Profile',
   SETTINGS: 'Settings',
 };

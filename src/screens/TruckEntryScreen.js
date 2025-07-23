@@ -66,111 +66,75 @@ const TruckEntryScreen = ({ navigation, route }) => {
   const [userRole, setUserRole] = useState('user');
 
   // Get dynamic data from app config
-  const materialTypes = appConfig?.materialTypes || [];
-  const entryTypes = appConfig?.entryTypes || [];
+  const materialTypes = appConfig?.materialTypes || [
+    { value: 'M-Sand', label: 'M-Sand' },
+    { value: 'P-Sand', label: 'P-Sand' },
+    { value: 'Blue Metal', label: 'Blue Metal' },
+  ];
+  const entryTypes = appConfig?.entryTypes || [
+    { value: 'Sales', label: 'Sales' },
+    { value: 'Raw Stone', label: 'Raw Stone' },
+  ];
 
   // Fallback material rates if API doesn't return them
   const fallbackMaterialRates = {
     'M-Sand': { currentRate: 22000 },
     'P-Sand': { currentRate: 20000 },
     'Blue Metal': { currentRate: 24000 },
+    'Raw Stone': { currentRate: 18000 },
   };
 
   const materialRates = appConfig?.materialRates || fallbackMaterialRates;
 
   useEffect(() => {
-    checkAuthentication();
+    checkAllPermissions();
+    loadAppConfiguration();
   }, []);
-
-  const checkAuthentication = async () => {
-    try {
-      // Load data if authenticated
-      checkAllPermissions();
-      loadAppConfiguration();
-    } catch (error) {
-      console.error('❌ Authentication check failed:', error);
-    }
-  };
 
   const loadAppConfiguration = async () => {
     try {
-      console.log('🔧 Loading app configuration...');
       const response = await apiService.getAppConfig();
-
       if (response.success) {
         setAppConfig(response.data);
-        console.log('✅ App configuration loaded successfully');
-        console.log('📊 Material rates:', response.data.materialRates);
-        console.log('📊 Material types:', response.data.materialTypes);
-        console.log('📊 Entry types:', response.data.entryTypes);
-        console.log(
-          '📊 Material rates keys:',
-          Object.keys(response.data.materialRates || {}),
-        );
-        console.log(
-          '📊 Material rates count:',
-          Object.keys(response.data.materialRates || {}).length,
-        );
       } else {
-        console.error('❌ Failed to load app configuration:', response.message);
         setErrorMessage('Failed to load app settings. Please try again.');
       }
-
-      // Auto-fill rate for edit mode if material type exists
-      if (editMode && entryData?.materialType && response.data.materialRates) {
-        const rate =
-          response.data.materialRates[entryData.materialType]?.currentRate;
-        if (rate && !ratePerUnit) {
-          setRatePerUnit(rate.toString());
-          console.log(
-            `💰 Edit mode - Auto-filled rate for ${entryData.materialType}: ₹${rate}`,
-          );
-        }
-      }
     } catch (error) {
-      console.error('❌ Failed to load app configuration:', error);
       setErrorMessage('Failed to load app settings. Please try again.');
     }
   };
 
   useEffect(() => {
-    // Auto-fill rate when material type changes
-    console.log('🔍 Material type changed:', materialType);
-    console.log('🔍 Available material rates:', materialRates);
-
-    if (materialType && materialRates[materialType]) {
-      const rate = materialRates[materialType].currentRate;
-      console.log(`💰 Auto-filled rate for ${materialType}: ₹${rate}`);
-      setRatePerUnit(rate.toString());
-    } else {
-      console.log('⚠️ No rate found for material type:', materialType);
-      console.log('🔍 Available material types:', Object.keys(materialRates));
+    // This effect handles logic specifically for the Entry Type selection.
+    if (entryType === 'Raw Stone') {
+      // If Raw Stone is selected, set its price immediately and clear material type.
+      if (materialRates['Raw Stone']) {
+        const rate = materialRates['Raw Stone'].currentRate;
+        setRatePerUnit(rate.toString());
+      }
+      setMaterialType('');
+    } else if (entryType === 'Sales') {
+      // If Sales is selected, clear the rate until a material is chosen.
+      setRatePerUnit('');
     }
-  }, [materialType, materialRates]);
+  }, [entryType, materialRates]);
 
   useEffect(() => {
-    // Clear material type and rate when entry type changes to Raw Stone
-    if (entryType === 'Raw Stone') {
-      setMaterialType('');
-      setRatePerUnit('');
-      setTotalAmount('');
+    // This effect handles logic specifically for the Material Type selection in Sales.
+    if (entryType === 'Sales' && materialType) {
+      if (materialRates[materialType]) {
+        const rate = materialRates[materialType].currentRate;
+        setRatePerUnit(rate.toString());
+      }
     }
-  }, [entryType]);
+  }, [materialType, entryType, materialRates]);
 
   // Calculate total amount when units or rate changes using backend API
   useEffect(() => {
     const calculateTotal = async () => {
-      console.log('🧮 calculateTotal triggered with:', {
-        units,
-        ratePerUnit,
-        materialType,
-      });
-
       if (units && ratePerUnit) {
         const unitsNum = parseFloat(units);
         const rateNum = parseFloat(ratePerUnit);
-
-        console.log('🧮 Parsed values:', { unitsNum, rateNum });
 
         if (
           !isNaN(unitsNum) &&
@@ -179,11 +143,6 @@ const TruckEntryScreen = ({ navigation, route }) => {
           rateNum > 0
         ) {
           try {
-            console.log('🧮 Calling API with:', {
-              unitsNum,
-              rateNum,
-              materialType,
-            });
             const response = await apiService.calculateTotal(
               unitsNum,
               rateNum,
@@ -192,33 +151,19 @@ const TruckEntryScreen = ({ navigation, route }) => {
 
             if (response.success) {
               setTotalAmount(response.data.calculation.totalAmount.toString());
-              console.log(
-                `🧮 Calculated total: ${response.data.formatted.totalAmount}`,
-              );
             } else {
               // Fallback to local calculation
               const total = unitsNum * rateNum;
               setTotalAmount(total.toString());
-              console.log('🧮 Fallback calculation:', total);
             }
           } catch (error) {
-            console.error('❌ Calculation API error:', error);
             // Fallback to local calculation
             const total = unitsNum * rateNum;
             setTotalAmount(total.toString());
-            console.log('🧮 Error fallback calculation:', total);
           }
         } else {
-          console.log('🧮 Invalid values for calculation:', {
-            unitsNum,
-            rateNum,
-          });
         }
       } else {
-        console.log('🧮 Missing values for calculation:', {
-          units,
-          ratePerUnit,
-        });
         setTotalAmount('');
       }
     };
@@ -333,11 +278,9 @@ const TruckEntryScreen = ({ navigation, route }) => {
 
     launchCamera(options, response => {
       if (response.didCancel) {
-        console.log('User cancelled camera');
         return;
       }
       if (response.error) {
-        console.log('Camera error: ', response.error);
         Alert.alert(
           'Camera Error',
           'Failed to capture image. Please try again.',
@@ -376,11 +319,9 @@ const TruckEntryScreen = ({ navigation, route }) => {
 
     launchImageLibrary(options, response => {
       if (response.didCancel) {
-        console.log('User cancelled gallery');
         return;
       }
       if (response.error) {
-        console.log('Gallery error: ', response.error);
         Alert.alert(
           'Gallery Error',
           'Failed to select image. Please try again.',
@@ -473,12 +414,9 @@ const TruckEntryScreen = ({ navigation, route }) => {
 
     try {
       // Test API connection first
-      console.log('🔍 Testing API connection...');
       try {
         await apiService.testConnection();
-        console.log('✅ API connection successful');
       } catch (connectionError) {
-        console.log('❌ API connection failed:', connectionError.message);
         setErrorMessage(
           'Cannot connect to server. Please check your internet connection.',
         );
@@ -493,28 +431,23 @@ const TruckEntryScreen = ({ navigation, route }) => {
         hour12: false,
       }); // HH:MM format
 
+      // Get today's date in YYYY-MM-DD format
+      const today = new Date();
+      const todayString = today.toISOString().split('T')[0];
+
       const entryData = {
         truckNumber: truckNumber.toUpperCase(),
         entryType,
         materialType: entryType === 'Sales' ? materialType : null,
         units: parseFloat(units),
         ratePerUnit: parseFloat(ratePerUnit),
+        entryDate: todayString, // Set to today's date
         // entryTime: removed, backend will set
       };
 
-      console.log(
-        '📤 Submitting truck entry:',
-        JSON.stringify(entryData, null, 2),
-      );
-
       // Debug token loading
-      const savedToken = await AsyncStorage.getItem('authToken');
-      console.log(
-        '�� Token check before API call:',
-        savedToken ? 'Token exists' : 'No token found',
-      );
+      const savedToken = await AsyncStorage.getItem('userToken');
       if (savedToken) {
-        console.log('🔑 Token preview:', savedToken.substring(0, 20) + '...');
       }
 
       // Debug API service token status
@@ -523,12 +456,9 @@ const TruckEntryScreen = ({ navigation, route }) => {
       // Token is automatically loaded by apiService
 
       // First validate with backend
-      console.log('🔍 Validating truck entry with backend...');
       const validationResponse = await apiService.validateTruckEntry(entryData);
-      console.log('✅ Validation response:', validationResponse);
 
       if (!validationResponse.success || !validationResponse.data.isValid) {
-        console.log('❌ Validation failed:', validationResponse.data.errors);
         setValidationErrors(validationResponse.data.errors || []);
         setErrorMessage('Please fix the validation errors and try again.');
         return;
@@ -539,16 +469,11 @@ const TruckEntryScreen = ({ navigation, route }) => {
         validationResponse.data.warnings &&
         validationResponse.data.warnings.length > 0
       ) {
-        console.log(
-          '⚠️ Validation warnings:',
-          validationResponse.data.warnings,
-        );
       }
 
       let response;
       if (editMode) {
         // Update existing entry
-        console.log('🔄 Updating existing truck entry...');
         response = await apiService.updateTruckEntry(
           entryData.id,
           entryData,
@@ -556,19 +481,19 @@ const TruckEntryScreen = ({ navigation, route }) => {
         );
       } else {
         // Create new entry
-        console.log('➕ Creating new truck entry...');
         response = await apiService.createTruckEntry(entryData, null); // No image for now
       }
 
-      console.log('📥 API Response:', response);
-
       if (response.success) {
+        const truckEntry = response.data?.truckEntry || response.data;
+        const formattedAmount =
+          truckEntry?.formattedAmount ||
+          formatCurrency(truckEntry?.totalAmount || 0);
         const successMsg = editMode
-          ? `Entry updated successfully! Total: ${response.data.truckEntry.formattedAmount}`
-          : `Entry created successfully! Total: ${response.data.truckEntry.formattedAmount}`;
+          ? `Entry updated successfully! Total: ${formattedAmount}`
+          : `Entry created successfully! Total: ${formattedAmount}`;
 
         setSuccessMessage(successMsg);
-        console.log('✅ Truck entry saved:', response.data.truckEntry);
 
         // Navigate back after short delay
         setTimeout(() => {
@@ -581,13 +506,11 @@ const TruckEntryScreen = ({ navigation, route }) => {
           }
         }, 2000);
       } else {
-        console.log('❌ API Error:', response.message);
         setErrorMessage(
           response.message || 'Failed to save entry. Please try again.',
         );
       }
     } catch (error) {
-      console.error('❌ Submit error:', error);
       setErrorMessage(
         error.message ||
           'Network error. Please check your connection and try again.',
@@ -837,7 +760,6 @@ const TruckEntryScreen = ({ navigation, route }) => {
               placeholderTextColor={theme.COLORS.placeholder}
               value={units}
               onChangeText={text => {
-                console.log('📝 Units changed:', text);
                 setUnits(text);
               }}
               keyboardType="numeric"
@@ -865,7 +787,6 @@ const TruckEntryScreen = ({ navigation, route }) => {
               placeholderTextColor={theme.COLORS.placeholder}
               value={ratePerUnit}
               onChangeText={text => {
-                console.log('💰 Rate per unit changed:', text);
                 setRatePerUnit(text);
               }}
               keyboardType="numeric"
@@ -885,15 +806,21 @@ const TruckEntryScreen = ({ navigation, route }) => {
           <Text style={styles.sectionTitle}>Total Amount</Text>
           <View style={[styles.inputWrapper, styles.disabledInput]}>
             <Text style={[styles.textInput, styles.totalAmountText]}>
-              {totalAmount
+              {totalAmount && !isNaN(parseFloat(totalAmount))
                 ? `₹${parseFloat(totalAmount).toLocaleString('en-IN')}`
                 : 'Enter units and rate to calculate'}
             </Text>
           </View>
           {totalAmount && (
             <Text style={styles.calculationNote}>
-              {units} units × ₹{parseFloat(ratePerUnit).toLocaleString('en-IN')}{' '}
-              = ₹{parseFloat(totalAmount).toLocaleString('en-IN')}
+              {units || 0} units × ₹
+              {ratePerUnit && !isNaN(parseFloat(ratePerUnit))
+                ? parseFloat(ratePerUnit).toLocaleString('en-IN')
+                : '0'}{' '}
+              = ₹
+              {totalAmount && !isNaN(parseFloat(totalAmount))
+                ? parseFloat(totalAmount).toLocaleString('en-IN')
+                : '0'}
             </Text>
           )}
         </View>
@@ -986,7 +913,6 @@ const TruckEntryScreen = ({ navigation, route }) => {
         setShowMaterialTypeModal,
         materialTypes,
         value => {
-          console.log('🎯 Material type selected:', value);
           setMaterialType(value);
         },
         'Select Material Type',

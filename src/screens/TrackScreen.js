@@ -15,6 +15,7 @@ import theme from '../assets/theme';
 import apiService from '../services/apiService';
 import { useAuth } from '../context/AuthContext';
 import { APP_ROUTES } from '../navigations/Routes';
+import { formatCurrency } from '../utils/formatting';
 
 const { width } = Dimensions.get('window');
 
@@ -53,19 +54,27 @@ const TrackScreen = ({ navigation }) => {
 
   const loadUserData = async () => {
     try {
-      const userData = await AsyncStorage.getItem('userData');
+      const userData = await AsyncStorage.getItem('user');
       if (userData) {
         const user = JSON.parse(userData);
-        setUserRole(user.role || 'user');
-        setUserDetails({
-          name: user.username || 'User',
-          email: user.email,
-          role: user.role === 'user' ? 'User' : 'Owner',
-          company: 'CrusherMate Operations',
-        });
+        if (user && typeof user === 'object') {
+          setUserRole(user.role || 'user');
+          setUserDetails({
+            name: user.username || 'User',
+            role: user.role === 'user' ? 'User' : 'Owner',
+            company: 'CrusherMate Operations',
+          });
+        }
       }
     } catch (error) {
       console.error('Failed to load user data:', error);
+      // Set default values on error
+      setUserRole('user');
+      setUserDetails({
+        name: 'User',
+        role: 'User',
+        company: 'CrusherMate Operations',
+      });
     }
   };
 
@@ -90,8 +99,13 @@ const TrackScreen = ({ navigation }) => {
       });
 
       if (response.success) {
-        setTodayEntries(response.data.entries || []);
-        console.log('✅ Loaded entries:', response.data.entries?.length || 0);
+        const entries = response.data || [];
+        // Ensure entries is an array and filter out any invalid entries
+        const validEntries = Array.isArray(entries)
+          ? entries.filter(entry => entry && typeof entry === 'object')
+          : [];
+        setTodayEntries(validEntries);
+        console.log('✅ Loaded entries:', validEntries.length);
       } else {
         setErrorMessage('Failed to load entries. Please try again.');
         setTodayEntries([]);
@@ -147,7 +161,7 @@ const TrackScreen = ({ navigation }) => {
             try {
               // Clear stored authentication data
               await AsyncStorage.removeItem('userRole');
-              await AsyncStorage.removeItem('userData');
+              await AsyncStorage.removeItem('user');
 
               // Clear token from API service
               await apiService.clearToken();
@@ -169,6 +183,11 @@ const TrackScreen = ({ navigation }) => {
   };
 
   const handleDeleteEntry = entryId => {
+    if (!entryId) {
+      Alert.alert('Error', 'Invalid entry ID');
+      return;
+    }
+
     Alert.alert(
       'Confirm Delete',
       'Are you sure you want to delete this entry? This action cannot be undone.',
@@ -189,7 +208,7 @@ const TrackScreen = ({ navigation }) => {
               if (response.success) {
                 // Remove from local state
                 setTodayEntries(prev =>
-                  prev.filter(entry => entry._id !== entryId),
+                  prev.filter(entry => entry?._id !== entryId),
                 );
                 Alert.alert(
                   'Entry Deleted',
@@ -223,28 +242,49 @@ const TrackScreen = ({ navigation }) => {
     );
   };
 
-  const formatCurrency = amount => {
-    return new Intl.NumberFormat('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
-
   const getTotalAmount = () => {
-    return todayEntries.reduce((sum, entry) => sum + entry.totalAmount, 0);
+    if (!Array.isArray(todayEntries)) return 0;
+    return todayEntries.reduce((sum, entry) => {
+      if (!entry || typeof entry !== 'object') return sum;
+      const amount = entry?.totalAmount || 0;
+      return sum + amount;
+    }, 0);
   };
 
   const getSalesCount = () => {
-    return todayEntries.filter(entry => entry.entryType === 'Sales').length;
+    if (!Array.isArray(todayEntries)) return 0;
+    return todayEntries.filter(
+      entry =>
+        entry && typeof entry === 'object' && entry?.entryType === 'Sales',
+    ).length;
   };
 
   const getRawStoneCount = () => {
-    return todayEntries.filter(entry => entry.entryType === 'Raw Stone').length;
+    if (!Array.isArray(todayEntries)) return 0;
+    return todayEntries.filter(
+      entry =>
+        entry && typeof entry === 'object' && entry?.entryType === 'Raw Stone',
+    ).length;
   };
 
   const renderEntryCard = (entry, index) => {
+    // Defensive check - if entry is undefined or null, don't render
+    if (!entry || typeof entry !== 'object') {
+      console.warn('Skipping invalid entry:', entry);
+      return null;
+    }
+
     const isLastCard = index === todayEntries.length - 1;
+
+    const formatTime = timeString => {
+      if (!timeString || typeof timeString !== 'string') return '';
+      const [hour, minute] = timeString.split(':');
+      const hourNum = parseInt(hour, 10);
+      if (isNaN(hourNum)) return '';
+      const ampm = hourNum >= 12 ? 'PM' : 'AM';
+      const formattedHour = hourNum % 12 || 12;
+      return `${formattedHour}:${minute || '00'} ${ampm}`;
+    };
 
     return (
       <View
@@ -254,8 +294,10 @@ const TrackScreen = ({ navigation }) => {
         {/* Header with truck number and time */}
         <View style={styles.entryHeader}>
           <View style={styles.truckInfo}>
-            <Text style={styles.truckNumber}>{entry.truckNumber}</Text>
-            <Text style={styles.entryTime}>{entry.entryTime}</Text>
+            <Text style={styles.truckNumber}>
+              {entry?.truckNumber || 'Unknown'}
+            </Text>
+            <Text style={styles.entryTime}>{formatTime(entry?.entryTime)}</Text>
           </View>
           <View style={styles.entryActions}>
             <TouchableOpacity
@@ -266,7 +308,7 @@ const TrackScreen = ({ navigation }) => {
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.deleteButton}
-              onPress={() => handleDeleteEntry(entry._id)}
+              onPress={() => handleDeleteEntry(entry?._id)}
             >
               <Text style={styles.deleteButtonText}>Delete</Text>
             </TouchableOpacity>
@@ -280,7 +322,7 @@ const TrackScreen = ({ navigation }) => {
             <View
               style={[
                 styles.entryTypeBadge,
-                entry.entryType === 'Sales'
+                entry?.entryType === 'Sales'
                   ? styles.salesBadge
                   : styles.rawStoneBadge,
               ]}
@@ -288,17 +330,17 @@ const TrackScreen = ({ navigation }) => {
               <Text
                 style={[
                   styles.entryTypeText,
-                  entry.entryType === 'Sales'
+                  entry?.entryType === 'Sales'
                     ? styles.salesText
                     : styles.rawStoneText,
                 ]}
               >
-                {entry.entryType}
+                {entry?.entryType || 'Unknown'}
               </Text>
             </View>
           </View>
 
-          {entry.materialType && (
+          {entry?.materialType && (
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>Material:</Text>
               <Text style={styles.detailValue}>{entry.materialType}</Text>
@@ -307,20 +349,20 @@ const TrackScreen = ({ navigation }) => {
 
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>Units:</Text>
-            <Text style={styles.detailValue}>{entry.units} tons</Text>
+            <Text style={styles.detailValue}>{entry?.units || 0} tons</Text>
           </View>
 
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>Rate:</Text>
             <Text style={styles.detailValue}>
-              {formatCurrency(entry.ratePerUnit)}/ton
+              {formatCurrency(entry?.ratePerUnit)}/ton
             </Text>
           </View>
 
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>Total Amount:</Text>
             <Text style={styles.totalAmount}>
-              {formatCurrency(entry.totalAmount)}
+              {formatCurrency(entry?.totalAmount)}
             </Text>
           </View>
         </View>
@@ -369,45 +411,51 @@ const TrackScreen = ({ navigation }) => {
     </View>
   );
 
-  const renderEmptyState = () => (
-    <View style={styles.emptyStateContainer}>
-      {/* User Details Card */}
-      <View style={styles.userDetailsCard}>
-        <View style={styles.userAvatar}>
-          <Text style={styles.userAvatarText}>
-            {userDetails?.name?.charAt(0) || 'U'}
+  const renderEmptyState = () => {
+    // Defensive check for userDetails
+    const safeUserDetails = userDetails || {};
+
+    return (
+      <View style={styles.emptyStateContainer}>
+        {/* User Details Card */}
+        <View style={styles.userDetailsCard}>
+          <View style={styles.userAvatar}>
+            <Text style={styles.userAvatarText}>
+              {safeUserDetails.name?.charAt(0) || 'U'}
+            </Text>
+          </View>
+          <View style={styles.userInfo}>
+            <Text style={styles.userName}>
+              {safeUserDetails.name || 'User'}
+            </Text>
+            <Text style={styles.userRole}>
+              {safeUserDetails.role || 'User'} •{' '}
+              {safeUserDetails.company || 'CrusherMate'}
+            </Text>
+          </View>
+        </View>
+
+        {/* No Entries Message */}
+        <View style={styles.noEntriesSection}>
+          <Text style={styles.emptyStateIcon}>📝</Text>
+          <Text style={styles.emptyStateTitle}>No entries today</Text>
+          <Text style={styles.emptyStateText}>
+            You haven't made any truck entries today.{'\n'}
+            Tap "Add Entry" to get started.
           </Text>
         </View>
-        <View style={styles.userInfo}>
-          <Text style={styles.userName}>{userDetails?.name || 'User'}</Text>
-          <Text style={styles.userEmail}>{userDetails?.email || ''}</Text>
-          <Text style={styles.userRole}>
-            {userDetails?.role || 'User'} •{' '}
-            {userDetails?.company || 'CrusherMate'}
-          </Text>
-        </View>
-      </View>
 
-      {/* No Entries Message */}
-      <View style={styles.noEntriesSection}>
-        <Text style={styles.emptyStateIcon}>📝</Text>
-        <Text style={styles.emptyStateTitle}>No entries today</Text>
-        <Text style={styles.emptyStateText}>
-          You haven't made any truck entries today.{'\n'}
-          Tap "Add Entry" to get started.
-        </Text>
+        {/* Add Entry Button */}
+        <TouchableOpacity
+          style={styles.emptyStateButton}
+          onPress={() => navigation.navigate(APP_ROUTES.TRUCK_ENTRY)}
+        >
+          <Text style={styles.emptyStateButtonIcon}>+</Text>
+          <Text style={styles.emptyStateButtonText}>Add Entry</Text>
+        </TouchableOpacity>
       </View>
-
-      {/* Add Entry Button */}
-      <TouchableOpacity
-        style={styles.emptyStateButton}
-        onPress={() => navigation.navigate(APP_ROUTES.TRUCK_ENTRY)}
-      >
-        <Text style={styles.emptyStateButtonIcon}>+</Text>
-        <Text style={styles.emptyStateButtonText}>Add Entry</Text>
-      </TouchableOpacity>
-    </View>
-  );
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -425,12 +473,14 @@ const TrackScreen = ({ navigation }) => {
               })}
             </Text>
           </View>
-          <TouchableOpacity
-            style={styles.headerLogoutButton}
-            onPress={handleLogout}
-          >
-            <Text style={styles.headerLogoutButtonText}>Logout</Text>
-          </TouchableOpacity>
+          <View style={styles.headerRight}>
+            <TouchableOpacity
+              style={styles.headerLogoutButton}
+              onPress={handleLogout}
+            >
+              <Text style={styles.headerLogoutButtonText}>Logout</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
@@ -456,14 +506,14 @@ const TrackScreen = ({ navigation }) => {
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
         }
       >
-        {todayEntries.length > 0 ? (
+        {Array.isArray(todayEntries) && todayEntries.length > 0 ? (
           <>
             {renderSummary()}
             <View style={styles.entriesContainer}>
               <Text style={styles.entriesTitle}>Today's Entries</Text>
-              {todayEntries.map((entry, index) =>
-                renderEntryCard(entry, index),
-              )}
+              {todayEntries
+                .filter(entry => entry && typeof entry === 'object')
+                .map((entry, index) => renderEntryCard(entry, index))}
             </View>
           </>
         ) : loading ? (
@@ -510,6 +560,11 @@ const styles = StyleSheet.create({
   headerLeft: {
     flex: 1,
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   headerTitle: {
     fontSize: 28,
     fontWeight: 'bold',
@@ -545,6 +600,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: theme.COLORS.white,
   },
+
   addButton: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -1,5 +1,12 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+} from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import apiService from '../services/apiService';
 
 const AuthContext = createContext();
 
@@ -12,47 +19,85 @@ export const useAuth = () => {
 };
 
 export const AuthProvider = ({ children }) => {
-  const [isAuthenticated, setIsAuthenticated] = useState(null);
+  const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  useEffect(() => {
-    checkAuthStatus();
-  }, []);
-
-  const checkAuthStatus = async () => {
+  const checkAuthStatus = useCallback(async () => {
+    setIsLoading(true);
     try {
-      const token = await AsyncStorage.getItem('userToken');
-      console.log('🔍 Checking auth status, token exists:', !!token);
-      setIsAuthenticated(!!token);
+      const storedUser = await AsyncStorage.getItem('user');
+      console.log('🔍 AuthContext - Stored user data:', storedUser);
+
+      if (storedUser) {
+        const parsedUser = JSON.parse(storedUser);
+        const token = await AsyncStorage.getItem('userToken');
+
+        if (token) {
+          await apiService.setToken(token); // Set token for future requests
+          setUser(parsedUser);
+          setIsAuthenticated(true);
+          console.log(
+            '✅ User authenticated from storage:',
+            parsedUser.username,
+            'Role:',
+            parsedUser.role,
+          );
+        } else {
+          console.log('❌ No token found, logging out');
+          await logout(); // Clean up if token is missing
+        }
+      } else {
+        console.log('❌ No stored user data found');
+        setIsAuthenticated(false);
+        setUser(null);
+      }
     } catch (error) {
-      console.error('Error checking auth status:', error);
-      setIsAuthenticated(false);
+      console.error('❌ Error checking auth status:', error);
+      await logout(); // Clear state on error
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  const login = async token => {
+  useEffect(() => {
+    checkAuthStatus();
+  }, [checkAuthStatus]);
+
+  const login = async (userData, token) => {
     try {
+      console.log('🔍 AuthContext - Login called with userData:', userData);
+      await AsyncStorage.setItem('user', JSON.stringify(userData));
       await AsyncStorage.setItem('userToken', token);
+      await apiService.setToken(token); // Update token in ApiService instance
+      setUser(userData);
       setIsAuthenticated(true);
-      console.log('✅ Login successful, auth state updated');
+      console.log(
+        '✅ Login successful, auth state updated for:',
+        userData.username,
+        'Role:',
+        userData.role,
+      );
     } catch (error) {
-      console.error('Error saving token:', error);
+      console.error('❌ Error saving user data:', error);
     }
   };
 
   const logout = async () => {
     try {
+      await AsyncStorage.removeItem('user');
       await AsyncStorage.removeItem('userToken');
+      await apiService.clearToken(); // Clear token in ApiService instance
+      setUser(null);
       setIsAuthenticated(false);
-      console.log('✅ Logout successful, auth state updated');
+      console.log('✅ Logout successful, auth state cleared');
     } catch (error) {
-      console.error('Error removing token:', error);
+      console.error('❌ Error during logout:', error);
     }
   };
 
   const value = {
+    user,
     isAuthenticated,
     isLoading,
     login,

@@ -1,40 +1,45 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   Image,
   TouchableOpacity,
-  Alert,
   TextInput,
   ScrollView,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
+import { Picker } from '@react-native-picker/picker';
 import theme from '../assets/theme';
 import apiService from '../services/apiService';
 import { AUTH_ROUTES } from '../navigations/Routes';
 
 const RegisterScreen = ({ navigation }) => {
   const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
-  const [mobileNumber, setMobileNumber] = useState('');
   const [password, setPassword] = useState('');
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const [organizations, setOrganizations] = useState([]);
+  const [selectedOrganization, setSelectedOrganization] = useState(null);
 
-  const validateEmail = email => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-  };
-
-  const validateMobileNumber = mobile => {
-    const mobileRegex = /^[0-9]{10}$/;
-    return mobileRegex.test(mobile);
-  };
+  useEffect(() => {
+    const fetchOrganizations = async () => {
+      try {
+        const orgs = await apiService.getOrganizations();
+        setOrganizations(orgs);
+        if (orgs.length > 0) {
+          setSelectedOrganization(orgs[0]._id);
+        }
+      } catch (error) {
+        Alert.alert('Error', 'Failed to fetch organizations.');
+      }
+    };
+    fetchOrganizations();
+  }, []);
 
   const validatePassword = password => {
-    // At least 8 characters, contains letters and numbers
     const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d@$!%*#?&]{8,}$/;
     return passwordRegex.test(password);
   };
@@ -44,89 +49,38 @@ const RegisterScreen = ({ navigation }) => {
   };
 
   const handleRegister = async () => {
-    // Clear previous error
     clearError();
 
-    // Validate empty fields
-    if (!username.trim()) {
-      setErrorMessage('Please enter a username');
+    if (!username.trim() || username.length > 15) {
+      setErrorMessage('Username must be 1-15 characters long.');
       return;
     }
-    if (!email.trim()) {
-      setErrorMessage('Please enter your email address');
-      return;
-    }
-    if (!mobileNumber.trim()) {
-      setErrorMessage('Please enter your mobile number');
-      return;
-    }
-    if (!password.trim()) {
-      setErrorMessage('Please enter a password');
-      return;
-    }
-
-    // Validate field lengths and formats
-    if (username.length < 3) {
-      setErrorMessage('Username must be at least 3 characters long');
-      return;
-    }
-    if (username.length > 30) {
-      setErrorMessage('Username must be less than 30 characters');
-      return;
-    }
-    if (!validateEmail(email)) {
-      setErrorMessage('Please enter a valid email address');
-      return;
-    }
-    if (!validateMobileNumber(mobileNumber)) {
-      setErrorMessage('Please enter a valid 10-digit mobile number');
-      return;
-    }
-    if (!validatePassword(password)) {
+    if (!password.trim() || !validatePassword(password)) {
       setErrorMessage(
         'Password must be 8+ characters with letters and numbers',
       );
       return;
     }
-
-    setLoading(true);
-
-    // Test connection first
-    try {
-      console.log('🔍 Testing connection to backend...');
-      await apiService.testConnection();
-      console.log('✅ Backend connection successful');
-    } catch (connectionError) {
-      console.error('❌ Backend connection failed:', connectionError);
-      setErrorMessage(
-        'Cannot connect to server. Please check if the backend is running.',
-      );
-      setLoading(false);
+    if (!selectedOrganization) {
+      setErrorMessage('Please select an organization');
       return;
     }
 
-    try {
-      console.log('🔐 Attempting registration with:', {
-        username,
-        mobileNumber,
-      });
+    setLoading(true);
 
-      // Use the actual email provided by user
+    try {
       const userData = {
         username: username.trim(),
-        email: email.trim().toLowerCase(),
-        mobileNumber: mobileNumber.trim(),
         password: password,
-        role: 'user',
+        organizationId: selectedOrganization,
       };
 
       const response = await apiService.register(userData);
 
       if (response.success) {
-        console.log('✅ Registration successful:', response.data.username);
         Alert.alert(
           'Registration Successful!',
-          'Your account has been created successfully. You can now login.',
+          'Your account has been created. You can now login.',
           [
             {
               text: 'OK',
@@ -135,63 +89,18 @@ const RegisterScreen = ({ navigation }) => {
           ],
         );
       } else {
-        // Handle validation errors from backend
-        if (response.errors && response.errors.length > 0) {
-          setErrorMessage(response.errors.join(', '));
-        } else {
-          setErrorMessage(response.message || 'Registration failed');
-        }
+        setErrorMessage(response.message || 'Registration failed');
       }
     } catch (error) {
-      console.error('❌ Registration error:', error);
-
-      let errorMessage =
-        'Unable to connect to server. Please check your internet connection.';
-
-      if (error.message) {
-        if (error.message.includes('already exists')) {
-          errorMessage =
-            'Username already exists. Please choose a different username.';
-        } else if (
-          error.message.includes('Network') ||
-          error.message.includes('fetch')
-        ) {
-          errorMessage =
-            'Network error. Please check your connection and try again.';
-        } else if (
-          error.message.includes('timeout') ||
-          error.message.includes('AbortSignal') ||
-          error.message.includes('The user aborted a request') ||
-          error.message.includes('Request timeout after 30 seconds')
-        ) {
-          errorMessage =
-            'Request timed out. Please check your connection and try again.';
-        } else if (
-          error.message.includes('ENOTFOUND') ||
-          error.message.includes('ECONNREFUSED')
-        ) {
-          errorMessage =
-            'Cannot connect to server. Please check if the backend is running.';
-        } else {
-          errorMessage = error.message;
-        }
-      }
-
-      setErrorMessage(errorMessage);
+      setErrorMessage(error.message || 'An unexpected error occurred.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSignIn = () => {
-    // Navigate back to login screen
-    navigation.goBack();
-  };
-
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       <View style={styles.content}>
-        {/* Logo Section */}
         <View style={styles.logoContainer}>
           <Image
             source={require('../assets/images/crusherLogo.jpeg')}
@@ -199,15 +108,12 @@ const RegisterScreen = ({ navigation }) => {
           />
         </View>
 
-        {/* Title Section */}
         <View style={styles.titleContainer}>
           <Text style={styles.title}>Register</Text>
-          <Text style={styles.subtitle}>Please register to login.</Text>
+          <Text style={styles.subtitle}>Create your account.</Text>
         </View>
 
-        {/* Input Section */}
         <View style={styles.inputSection}>
-          {/* Username Input */}
           <View style={styles.inputContainer}>
             <View style={styles.inputWrapper}>
               <Text style={styles.inputIcon}>👤</Text>
@@ -221,54 +127,27 @@ const RegisterScreen = ({ navigation }) => {
                   clearError();
                 }}
                 autoCapitalize="none"
-                maxLength={30}
-                autoComplete="username"
-              />
-            </View>
-          </View>
-
-          {/* Email Input */}
-          <View style={styles.inputContainer}>
-            <View style={styles.inputWrapper}>
-              <Text style={styles.inputIcon}>📧</Text>
-              <TextInput
-                style={styles.textInput}
-                placeholder="Email Address"
-                placeholderTextColor={theme.COLORS.placeholder}
-                value={email}
-                onChangeText={text => {
-                  setEmail(text);
-                  clearError();
-                }}
-                autoCapitalize="none"
-                keyboardType="email-address"
-                maxLength={50}
-                autoComplete="email"
-              />
-            </View>
-          </View>
-
-          {/* Mobile Number Input */}
-          <View style={styles.inputContainer}>
-            <View style={styles.inputWrapper}>
-              <Text style={styles.inputIcon}>📱</Text>
-              <TextInput
-                style={styles.textInput}
-                placeholder="Mobile Number"
-                placeholderTextColor={theme.COLORS.placeholder}
-                value={mobileNumber}
-                onChangeText={text => {
-                  setMobileNumber(text);
-                  clearError();
-                }}
-                keyboardType="phone-pad"
                 maxLength={15}
-                autoComplete="tel"
               />
             </View>
           </View>
 
-          {/* Password Input */}
+          <View style={styles.inputContainer}>
+            <View style={styles.inputWrapper}>
+              <Text style={styles.inputIcon}>🏢</Text>
+              <Picker
+                selectedValue={selectedOrganization}
+                style={styles.picker}
+                onValueChange={itemValue => setSelectedOrganization(itemValue)}
+                itemStyle={styles.pickerItem}
+              >
+                {organizations.map(org => (
+                  <Picker.Item label={org.name} value={org._id} key={org._id} />
+                ))}
+              </Picker>
+            </View>
+          </View>
+
           <View style={styles.inputContainer}>
             <View style={styles.inputWrapper}>
               <Text style={styles.inputIcon}>🔒</Text>
@@ -283,7 +162,6 @@ const RegisterScreen = ({ navigation }) => {
                 }}
                 secureTextEntry={!isPasswordVisible}
                 maxLength={50}
-                autoComplete="new-password"
               />
               <TouchableOpacity
                 style={styles.eyeButton}
@@ -301,7 +179,6 @@ const RegisterScreen = ({ navigation }) => {
             </View>
           </View>
 
-          {/* Password Requirements */}
           <View style={styles.passwordHintContainer}>
             <Text style={styles.passwordHint}>
               Password must be 8+ characters with letters and numbers
@@ -309,7 +186,6 @@ const RegisterScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {/* Register Button */}
         <TouchableOpacity
           style={[
             styles.registerButton,
@@ -325,17 +201,17 @@ const RegisterScreen = ({ navigation }) => {
           )}
         </TouchableOpacity>
 
-        {/* Error Message */}
         {errorMessage ? (
           <View style={styles.errorContainer}>
             <Text style={styles.errorText}>{errorMessage}</Text>
           </View>
         ) : null}
 
-        {/* Sign In Link */}
         <View style={styles.signInContainer}>
-          <Text style={styles.signInText}>Already have account? </Text>
-          <TouchableOpacity onPress={handleSignIn}>
+          <Text style={styles.signInText}>Already have an account? </Text>
+          <TouchableOpacity
+            onPress={() => navigation.navigate(AUTH_ROUTES.LOGIN)}
+          >
             <Text style={styles.signInLink}>Sign In</Text>
           </TouchableOpacity>
         </View>
@@ -402,6 +278,15 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: theme.COLORS.text,
   },
+  picker: {
+    flex: 1,
+    height: '100%',
+    color: theme.COLORS.text,
+  },
+  pickerItem: {
+    fontSize: 16,
+    color: theme.COLORS.text,
+  },
   eyeButton: {
     padding: 4,
   },
@@ -413,6 +298,7 @@ const styles = StyleSheet.create({
   passwordHintContainer: {
     marginTop: -10,
     marginBottom: 10,
+    paddingLeft: 5,
   },
   passwordHint: {
     fontSize: 12,
@@ -426,14 +312,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
-    shadowColor: theme.COLORS.shadow,
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
   },
   registerButtonText: {
     color: theme.COLORS.white,
@@ -441,7 +319,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   registerButtonDisabled: {
-    backgroundColor: theme.COLORS.lightGray,
     opacity: 0.7,
   },
   errorContainer: {
@@ -449,8 +326,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 12,
     marginBottom: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: '#F44336',
   },
   errorText: {
     color: '#D32F2F',

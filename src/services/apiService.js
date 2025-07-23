@@ -1,9 +1,7 @@
 // API Configuration
 import { Platform } from 'react-native';
 
-let API_BASE_URL;
-// Use live backend for both development and production
-API_BASE_URL = 'https://crushermate-backend.vercel.app/api'; // Live Vercel Backend
+export const API_BASE_URL = 'http://192.168.29.242:3000/api';
 
 // Uncomment below for local development testing
 // if (__DEV__) {
@@ -194,10 +192,10 @@ class ApiService {
   }
 
   // Authentication APIs
-  async login(email, password) {
+  async login(username, password) {
     const response = await this.request('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ username, password }),
     });
 
     // Save token after successful login
@@ -253,9 +251,13 @@ class ApiService {
       const formData = new FormData();
 
       // Add entry data
-      Object.keys(entryData).forEach(key => {
-        formData.append(key, entryData[key]);
-      });
+      if (entryData && typeof entryData === 'object') {
+        Object.keys(entryData).forEach(key => {
+          if (entryData[key] !== undefined && entryData[key] !== null) {
+            formData.append(key, entryData[key]);
+          }
+        });
+      }
 
       // Add image file
       formData.append('truckImage', {
@@ -275,11 +277,11 @@ class ApiService {
       // Regular JSON request without image
       console.log(
         '🔍 API Service - createTruckEntry data:',
-        JSON.stringify(entryData, null, 2),
+        JSON.stringify(entryData || {}, null, 2),
       );
       return this.request('/truck-entries', {
         method: 'POST',
-        body: JSON.stringify(entryData),
+        body: JSON.stringify(entryData || {}),
       });
     }
   }
@@ -299,9 +301,13 @@ class ApiService {
       const formData = new FormData();
 
       // Add entry data
-      Object.keys(entryData).forEach(key => {
-        formData.append(key, entryData[key]);
-      });
+      if (entryData && typeof entryData === 'object') {
+        Object.keys(entryData).forEach(key => {
+          if (entryData[key] !== undefined && entryData[key] !== null) {
+            formData.append(key, entryData[key]);
+          }
+        });
+      }
 
       // Add image file
       formData.append('truckImage', {
@@ -321,7 +327,7 @@ class ApiService {
       // Regular JSON request without image
       return this.request(`/truck-entries/${id}`, {
         method: 'PUT',
-        body: JSON.stringify(entryData),
+        body: JSON.stringify(entryData || {}),
       });
     }
   }
@@ -350,6 +356,10 @@ class ApiService {
     return this.request(`/dashboard/financial?${params}`);
   }
 
+  async getOrganizations() {
+    return this.request('/organizations');
+  }
+
   // Report APIs
   async getReportData(filters) {
     return this.request('/reports/data', {
@@ -367,6 +377,29 @@ class ApiService {
 
   async getReportTemplates() {
     return this.request('/reports/templates');
+  }
+
+  async exportData(exportOptions) {
+    const token = await AsyncStorage.getItem('userToken');
+    const response = await fetch(`${API_BASE_URL}/reports/export`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(exportOptions),
+    });
+    return this.handleResponse(response);
+  }
+
+  async handleResponse(response) {
+    if (response.ok) {
+      return response.json();
+    }
+    const errorData = await response.json();
+    throw new Error(
+      errorData.message || `HTTP error! status: ${response.status}`,
+    );
   }
 
   // Material Rate APIs

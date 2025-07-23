@@ -45,6 +45,7 @@ endif()
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for each subdirectory.
   include("/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/android/app/.cxx/Debug/486r474s/x86/rnasyncstorage_autolinked_build/cmake_install.cmake")
+  include("/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/android/app/.cxx/Debug/486r474s/x86/rnpicker_autolinked_build/cmake_install.cmake")
   include("/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/android/app/.cxx/Debug/486r474s/x86/rngesturehandler_codegen_autolinked_build/cmake_install.cmake")
   include("/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/android/app/.cxx/Debug/486r474s/x86/RNImagePickerSpec_autolinked_build/cmake_install.cmake")
   include("/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/android/app/.cxx/Debug/486r474s/x86/rnreanimated_autolinked_build/cmake_install.cmake")

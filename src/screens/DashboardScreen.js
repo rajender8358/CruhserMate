@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,56 +10,60 @@ import {
   Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useAuth } from '../context/AuthContext';
 import { API_BASE_URL } from '../services/apiService';
 import theme from '../assets/theme';
+import apiService from '../services/apiService';
+import { formatCurrency } from '../utils/formatting';
+import { APP_ROUTES } from '../navigations/Routes';
 
 const DashboardScreen = () => {
   const navigation = useNavigation();
+  const { user, logout } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
   const [dashboardData, setDashboardData] = useState({
-    totalEntries: 0,
-    todayEntries: 0,
-    totalSales: 0,
-    totalRawStone: 0,
-    monthlyRevenue: 0,
+    summary: {},
     topMaterials: [],
     recentEntries: [],
+    todayEntries: 0,
   });
   const [selectedDay, setSelectedDay] = useState('all');
-  const [weekData, setWeekData] = useState({});
   const [dayData, setDayData] = useState({});
+  const [allEntries, setAllEntries] = useState([]);
+  const [pagination, setPagination] = useState({
+    hasNextPage: false,
+    currentPage: 1,
+    totalPages: 1,
+  });
 
-  useEffect(() => {
-    checkUserRole();
-  }, []);
+  const checkUserRole = useCallback(() => {
+    if (user && user.role !== 'owner') {
+      Alert.alert(
+        'Access Denied',
+        'This dashboard is only available for owners.',
+        [
+          {
+            text: 'OK',
+            onPress: () => navigation.goBack(),
+          },
+        ],
+      );
+      return false;
+    }
+    return true;
+  }, [user, navigation]);
 
-  const checkUserRole = async () => {
-    try {
-      const userData = await AsyncStorage.getItem('userData');
-      if (userData) {
-        const user = JSON.parse(userData);
-        if (user.role !== 'owner') {
-          Alert.alert(
-            'Access Denied',
-            'This dashboard is only available for owners.',
-            [
-              {
-                text: 'OK',
-                onPress: () => navigation.goBack(),
-              },
-            ],
-          );
-          return;
-        }
+  useFocusEffect(
+    useCallback(() => {
+      if (!checkUserRole()) {
+        return;
       }
       fetchDashboardData();
-    } catch (error) {
-      console.error('Error checking user role:', error);
-      Alert.alert('Error', 'Failed to verify user permissions');
-    }
-  };
+      fetchEntriesForDay(1); // Fetch first page of entries
+    }, [selectedDay, user]), // Rerun on day or user change
+  );
 
   const getCurrentWeekDates = () => {
     const today = new Date();
@@ -123,8 +127,7 @@ const DashboardScreen = () => {
 
   const fetchDashboardData = async () => {
     try {
-      const token = await AsyncStorage.getItem('userToken');
-      if (!token) {
+      if (!user) {
         Alert.alert('Error', 'Authentication required');
         return;
       }
@@ -142,7 +145,7 @@ const DashboardScreen = () => {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
+            Authorization: `Bearer ${apiService.token}`,
           },
         },
       );
@@ -166,59 +169,84 @@ const DashboardScreen = () => {
     }
   };
 
-  const handleDownloadPDF = async () => {
+  const fetchEntriesForDay = async (page = 1) => {
     try {
-      const token = await AsyncStorage.getItem('userToken');
-      if (!token) {
-        Alert.alert('Error', 'Authentication required');
-        return;
-      }
-
+      if (!user) return;
       const dayDates = getDayDates(selectedDay);
-      if (!dayDates) {
-        Alert.alert('Error', 'Cannot download future dates');
-        return;
-      }
 
-      const downloadUrl = `${API_BASE_URL}/reports/download/pdf?startDate=${dayDates.startDate}&endDate=${dayDates.endDate}`;
+      if (!dayDates) return;
 
-      const supported = await Linking.canOpenURL(downloadUrl);
-      if (supported) {
-        await Linking.openURL(downloadUrl);
+      const response = await fetch(
+        `${API_BASE_URL}/truck-entries?startDate=${dayDates.startDate}&endDate=${dayDates.endDate}&page=${page}&limit=10`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiService.token}`,
+          },
+        },
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        setAllEntries(prev =>
+          page === 1 ? data.data.entries : [...prev, ...data.data.entries],
+        );
+        setPagination(
+          data.data.pagination || {
+            hasNextPage: false,
+            currentPage: page,
+            totalPages: 1,
+          },
+        );
       } else {
-        Alert.alert('Error', 'Cannot open download link');
+        const errorData = await response.json();
+        Alert.alert('Error', errorData.message || 'Failed to fetch entries');
       }
     } catch (error) {
-      console.error('PDF download error:', error);
-      Alert.alert('Error', 'Failed to download PDF');
+      console.error('Fetch entries error:', error);
+      Alert.alert('Error', 'Network error while fetching entries');
     }
   };
 
-  const handleDownloadCSV = async () => {
+  const handleExport = async format => {
+    setExporting(true);
     try {
-      const token = await AsyncStorage.getItem('userToken');
-      if (!token) {
-        Alert.alert('Error', 'Authentication required');
-        return;
-      }
-
       const dayDates = getDayDates(selectedDay);
       if (!dayDates) {
-        Alert.alert('Error', 'Cannot download future dates');
+        Alert.alert('Error', 'Cannot export future dates');
         return;
       }
 
-      const downloadUrl = `${API_BASE_URL}/reports/download/csv?startDate=${dayDates.startDate}&endDate=${dayDates.endDate}`;
+      // 1. Request the file from the backend
+      const exportOptions = {
+        startDate: dayDates.startDate,
+        endDate: dayDates.endDate,
+        format,
+      };
 
-      const supported = await Linking.canOpenURL(downloadUrl);
-      if (supported) {
-        await Linking.openURL(downloadUrl);
+      const response = await apiService.exportData(exportOptions);
+
+      if (response.success) {
+        const { token, fileId } = response.data;
+        const downloadUrl = `${API_BASE_URL}/reports/download/${fileId}?token=${token}`;
+
+        try {
+          await Linking.openURL(downloadUrl);
+        } catch (err) {
+          Alert.alert(
+            'Error',
+            'Failed to open download link. Please ensure you have a web browser installed and enabled.',
+          );
+        }
       } else {
-        Alert.alert('Error', 'Cannot open download link');
+        Alert.alert('Error', response.message || 'Failed to export data');
       }
     } catch (error) {
-      console.error('CSV download error:', error);
-      Alert.alert('Error', 'Failed to download CSV');
+      console.error('Export error:', error);
+      Alert.alert('Error', 'Failed to export data');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -235,20 +263,34 @@ const DashboardScreen = () => {
     </View>
   );
 
-  const RecentEntryCard = ({ entry }) => (
-    <View style={styles.recentEntryCard}>
-      <View style={styles.entryHeader}>
-        <Text style={styles.entryType}>{entry.entryType}</Text>
-        <Text style={styles.entryDate}>
-          {new Date(entry.createdAt).toLocaleDateString()} at {entry.entryTime}
+  const RecentEntryCard = ({ entry }) => {
+    const formatTime = timeString => {
+      if (!timeString) return '';
+      const [hour, minute] = timeString.split(':');
+      const hourNum = parseInt(hour, 10);
+      const ampm = hourNum >= 12 ? 'PM' : 'AM';
+      const formattedHour = hourNum % 12 || 12;
+      return `${formattedHour}:${minute} ${ampm}`;
+    };
+
+    return (
+      <View style={styles.recentEntryCard}>
+        <View style={styles.entryHeader}>
+          <Text style={styles.entryType}>{entry.entryType}</Text>
+          <Text style={styles.entryDate}>
+            {new Date(entry.createdAt).toLocaleDateString()} at{' '}
+            {formatTime(entry.entryTime)}
+          </Text>
+        </View>
+        <Text style={styles.entryDetails}>
+          {entry.materialType || 'N/A'} - {entry.units} units
+        </Text>
+        <Text style={styles.entryPrice}>
+          {formatCurrency(entry.totalAmount)}
         </Text>
       </View>
-      <Text style={styles.entryDetails}>
-        {entry.materialType || 'N/A'} - {entry.units} units
-      </Text>
-      <Text style={styles.entryPrice}>₹{entry.totalAmount}</Text>
-    </View>
-  );
+    );
+  };
 
   if (loading) {
     return (
@@ -266,7 +308,9 @@ const DashboardScreen = () => {
       <View style={styles.header}>
         <View style={styles.headerRow}>
           <View style={styles.titleContainer}>
-            <Text style={styles.headerTitle}>Owner Dashboard</Text>
+            <Text style={styles.headerTitle}>
+              {user?.organization?.name ?? 'Owner'} Dashboard
+            </Text>
           </View>
           <TouchableOpacity
             style={styles.backButton}
@@ -285,7 +329,7 @@ const DashboardScreen = () => {
             <Text style={styles.sectionTitle}>Current Week Filter</Text>
             <TouchableOpacity
               style={styles.refreshButton}
-              onPress={fetchDashboardData}
+              onPress={() => setSelectedDay('all')}
             >
               <Text style={styles.refreshButtonText}>Refresh</Text>
             </TouchableOpacity>
@@ -296,10 +340,7 @@ const DashboardScreen = () => {
                 styles.filterButton,
                 selectedDay === 'all' && styles.filterButtonActive,
               ]}
-              onPress={() => {
-                setSelectedDay('all');
-                setLoading(true);
-              }}
+              onPress={() => setSelectedDay('all')}
             >
               <Text
                 style={[
@@ -310,139 +351,41 @@ const DashboardScreen = () => {
                 All Week
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.filterButton,
-                selectedDay === 'sunday' && styles.filterButtonActive,
-              ]}
-              onPress={() => {
-                setSelectedDay('sunday');
-                setLoading(true);
-              }}
-            >
-              <Text
-                style={[
-                  styles.filterButtonText,
-                  selectedDay === 'sunday' && styles.filterButtonTextActive,
-                ]}
-              >
-                Sun
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.filterButton,
-                selectedDay === 'monday' && styles.filterButtonActive,
-              ]}
-              onPress={() => {
-                setSelectedDay('monday');
-                setLoading(true);
-              }}
-            >
-              <Text
-                style={[
-                  styles.filterButtonText,
-                  selectedDay === 'monday' && styles.filterButtonTextActive,
-                ]}
-              >
-                Mon
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.filterButton,
-                selectedDay === 'tuesday' && styles.filterButtonActive,
-              ]}
-              onPress={() => {
-                setSelectedDay('tuesday');
-                setLoading(true);
-              }}
-            >
-              <Text
-                style={[
-                  styles.filterButtonText,
-                  selectedDay === 'tuesday' && styles.filterButtonTextActive,
-                ]}
-              >
-                Tue
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.filterButton,
-                selectedDay === 'wednesday' && styles.filterButtonActive,
-              ]}
-              onPress={() => {
-                setSelectedDay('wednesday');
-                setLoading(true);
-              }}
-            >
-              <Text
-                style={[
-                  styles.filterButtonText,
-                  selectedDay === 'wednesday' && styles.filterButtonTextActive,
-                ]}
-              >
-                Wed
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.filterButton,
-                selectedDay === 'thursday' && styles.filterButtonActive,
-              ]}
-              onPress={() => {
-                setSelectedDay('thursday');
-                setLoading(true);
-              }}
-            >
-              <Text
-                style={[
-                  styles.filterButtonText,
-                  selectedDay === 'thursday' && styles.filterButtonTextActive,
-                ]}
-              >
-                Thu
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.filterButton,
-                selectedDay === 'friday' && styles.filterButtonActive,
-              ]}
-              onPress={() => {
-                setSelectedDay('friday');
-                setLoading(true);
-              }}
-            >
-              <Text
-                style={[
-                  styles.filterButtonText,
-                  selectedDay === 'friday' && styles.filterButtonTextActive,
-                ]}
-              >
-                Fri
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.filterButton,
-                selectedDay === 'saturday' && styles.filterButtonActive,
-              ]}
-              onPress={() => {
-                setSelectedDay('saturday');
-                setLoading(true);
-              }}
-            >
-              <Text
-                style={[
-                  styles.filterButtonText,
-                  selectedDay === 'saturday' && styles.filterButtonTextActive,
-                ]}
-              >
-                Sat
-              </Text>
-            </TouchableOpacity>
+            {[
+              'sunday',
+              'monday',
+              'tuesday',
+              'wednesday',
+              'thursday',
+              'friday',
+              'saturday',
+            ].map((day, index) => {
+              const today = new Date();
+              const currentDayIndex = today.getDay();
+              const isFutureDay = index > currentDayIndex;
+
+              return (
+                <TouchableOpacity
+                  key={day}
+                  style={[
+                    styles.filterButton,
+                    selectedDay === day && styles.filterButtonActive,
+                    isFutureDay && styles.filterButtonDisabled,
+                  ]}
+                  onPress={() => !isFutureDay && setSelectedDay(day)}
+                  disabled={isFutureDay}
+                >
+                  <Text
+                    style={[
+                      styles.filterButtonText,
+                      selectedDay === day && styles.filterButtonTextActive,
+                    ]}
+                  >
+                    {day.charAt(0).toUpperCase() + day.slice(1, 3)}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
           {dayData.startDate && (
             <Text style={styles.weekRange}>
@@ -468,27 +411,29 @@ const DashboardScreen = () => {
           <View style={styles.metricsGrid}>
             <MetricCard
               title="Total Entries"
-              value={dashboardData.totalEntries}
-              subtitle="This week"
+              value={dashboardData.summary?.totalEntries ?? 0}
+              subtitle={
+                selectedDay === 'all'
+                  ? 'This Week'
+                  : selectedDay.charAt(0).toUpperCase() + selectedDay.slice(1)
+              }
               color={theme.COLORS.primary}
             />
             <MetricCard
               title="Today's Entries"
-              value={dashboardData.todayEntries}
+              value={dashboardData.todayEntries ?? 0}
               subtitle="Today"
               color={theme.COLORS.secondary}
             />
             <MetricCard
               title="Total Sales"
-              value={`₹${dashboardData.totalSales.toLocaleString()}`}
-              subtitle="This week"
+              value={formatCurrency(dashboardData.summary?.totalSales ?? 0)}
+              subtitle={
+                selectedDay === 'all'
+                  ? 'This Week'
+                  : selectedDay.charAt(0).toUpperCase() + selectedDay.slice(1)
+              }
               color="#FF9500"
-            />
-            <MetricCard
-              title="Monthly Revenue"
-              value={`₹${dashboardData.monthlyRevenue.toLocaleString()}`}
-              subtitle="This month"
-              color="#AF52DE"
             />
           </View>
         </View>
@@ -500,20 +445,20 @@ const DashboardScreen = () => {
             <View style={styles.entryTypeCard}>
               <Text style={styles.entryTypeTitle}>Sales</Text>
               <Text style={styles.entryTypeCount}>
-                {dashboardData.totalSales}
+                {formatCurrency(dashboardData.summary?.totalSales ?? 0)}
               </Text>
             </View>
             <View style={styles.entryTypeCard}>
               <Text style={styles.entryTypeTitle}>Raw Stone</Text>
               <Text style={styles.entryTypeCount}>
-                {dashboardData.totalRawStone}
+                {formatCurrency(dashboardData.summary?.totalRawStone ?? 0)}
               </Text>
             </View>
           </View>
         </View>
 
         {/* Top Materials Section */}
-        {dashboardData.topMaterials.length > 0 && (
+        {dashboardData.topMaterials?.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Top Materials</Text>
             {dashboardData.topMaterials.map((material, index) => (
@@ -527,15 +472,35 @@ const DashboardScreen = () => {
           </View>
         )}
 
-        {/* Recent Entries Section */}
-        {dashboardData.recentEntries.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Recent Entries</Text>
-            {dashboardData.recentEntries.map((entry, index) => (
+        {/* All Entries Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>
+            Entries for{' '}
+            {selectedDay === 'all'
+              ? 'the Week'
+              : selectedDay.charAt(0).toUpperCase() + selectedDay.slice(1)}
+          </Text>
+          {allEntries.length > 0 ? (
+            allEntries.map((entry, index) => (
               <RecentEntryCard key={index} entry={entry} />
-            ))}
-          </View>
-        )}
+            ))
+          ) : (
+            <Text style={styles.noEntriesText}>
+              No entries found for this day.
+            </Text>
+          )}
+
+          {pagination?.hasNextPage && (
+            <TouchableOpacity
+              style={styles.seeMoreButton}
+              onPress={() =>
+                fetchEntriesForDay((pagination?.currentPage || 1) + 1)
+              }
+            >
+              <Text style={styles.seeMoreButtonText}>See More</Text>
+            </TouchableOpacity>
+          )}
+        </View>
 
         {/* Download Buttons */}
         <View style={styles.actionButtons}>
@@ -544,20 +509,45 @@ const DashboardScreen = () => {
               styles.actionButton,
               { backgroundColor: theme.COLORS.primary },
             ]}
-            onPress={handleDownloadPDF}
+            onPress={() => handleExport('pdf')}
+            disabled={exporting}
           >
-            <Text style={styles.actionButtonText}>📄 Download PDF</Text>
+            {exporting ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.actionButtonText}>📄 Download PDF</Text>
+            )}
           </TouchableOpacity>
           <TouchableOpacity
             style={[
               styles.actionButton,
               { backgroundColor: theme.COLORS.primary },
             ]}
-            onPress={handleDownloadCSV}
+            onPress={() => handleExport('csv')}
+            disabled={exporting}
           >
-            <Text style={styles.actionButtonText}>📊 Download CSV</Text>
+            {exporting ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.actionButtonText}>📊 Download CSV</Text>
+            )}
           </TouchableOpacity>
         </View>
+
+        {/* Owner-only Material Rates Button */}
+        {user?.role === 'owner' && (
+          <View style={styles.actionButtons}>
+            <TouchableOpacity
+              style={[
+                styles.actionButton,
+                { backgroundColor: '#059669' }, // Green color for rates
+              ]}
+              onPress={() => navigation.navigate(APP_ROUTES.MATERIAL_RATES)}
+            >
+              <Text style={styles.actionButtonText}>💰 Material Rates</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -652,6 +642,10 @@ const styles = StyleSheet.create({
   filterButtonActive: {
     backgroundColor: theme.COLORS.primary,
   },
+  filterButtonDisabled: {
+    opacity: 0.5,
+    backgroundColor: '#E0E0E0',
+  },
   filterButtonText: {
     fontSize: 12,
     fontWeight: '500',
@@ -745,9 +739,10 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   entryTypeCount: {
-    fontSize: 28,
+    fontSize: 22,
     fontWeight: 'bold',
     color: '#007AFF',
+    flexShrink: 1,
   },
   materialCard: {
     backgroundColor: '#FFFFFF',
@@ -808,6 +803,23 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#34C759',
+  },
+  noEntriesText: {
+    textAlign: 'center',
+    color: '#666',
+    marginTop: 20,
+    fontStyle: 'italic',
+  },
+  seeMoreButton: {
+    marginTop: 15,
+    paddingVertical: 10,
+    backgroundColor: theme.COLORS.lightGray,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  seeMoreButtonText: {
+    color: theme.COLORS.primary,
+    fontWeight: '600',
   },
   actionButtons: {
     marginTop: 30,
