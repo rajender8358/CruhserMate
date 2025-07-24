@@ -1,1 +1,0 @@
-/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/android/app/build/intermediates/cxx/RelWithDebInfo/5c4c3o34/obj/arm64-v8a

@@ -37,6 +37,37 @@ if(NOT "${NEW_GLOB}" STREQUAL "${OLD_GLOB}")
   file(TOUCH_NOCREATE "/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/android/app/.cxx/RelWithDebInfo/5c4c3o34/armeabi-v7a/CMakeFiles/cmake.verify_globs")
 endif()
 
+# LIB_CUSTOM_SRCS at /Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/node_modules/@react-native-picker/picker/android/src/main/jni/CMakeLists.txt:20 (file)
+file(GLOB NEW_GLOB LIST_DIRECTORIES true "/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/node_modules/@react-native-picker/picker/android/src/main/jni/*.cpp")
+set(OLD_GLOB
+  "/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/node_modules/@react-native-picker/picker/android/src/main/jni/RNCAndroidDialogPickerMeasurementsManager.cpp"
+  "/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/node_modules/@react-native-picker/picker/android/src/main/jni/RNCAndroidDialogPickerShadowNode.cpp"
+  "/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/node_modules/@react-native-picker/picker/android/src/main/jni/RNCAndroidDialogPickerState.cpp"
+  "/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/node_modules/@react-native-picker/picker/android/src/main/jni/RNCAndroidDropdownPickerMeasurementsManager.cpp"
+  "/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/node_modules/@react-native-picker/picker/android/src/main/jni/RNCAndroidDropdownPickerShadowNode.cpp"
+  "/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/node_modules/@react-native-picker/picker/android/src/main/jni/RNCAndroidDropdownPickerState.cpp"
+  "/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/node_modules/@react-native-picker/picker/android/src/main/jni/rnpicker.cpp"
+  )
+if(NOT "${NEW_GLOB}" STREQUAL "${OLD_GLOB}")
+  message("-- GLOB mismatch!")
+  file(TOUCH_NOCREATE "/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/android/app/.cxx/RelWithDebInfo/5c4c3o34/armeabi-v7a/CMakeFiles/cmake.verify_globs")
+endif()
+
+# LIB_CODEGEN_SRCS at /Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/node_modules/@react-native-picker/picker/android/src/main/jni/CMakeLists.txt:21 (file)
+file(GLOB NEW_GLOB LIST_DIRECTORIES true "/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/node_modules/@react-native-picker/picker/android/src/main/jni/../../../build/generated/source/codegen/jni/react/renderer/components/rnpicker/*.cpp")
+set(OLD_GLOB
+  "/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/node_modules/@react-native-picker/picker/android/src/main/jni/../../../build/generated/source/codegen/jni/react/renderer/components/rnpicker/ComponentDescriptors.cpp"
+  "/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/node_modules/@react-native-picker/picker/android/src/main/jni/../../../build/generated/source/codegen/jni/react/renderer/components/rnpicker/EventEmitters.cpp"
+  "/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/node_modules/@react-native-picker/picker/android/src/main/jni/../../../build/generated/source/codegen/jni/react/renderer/components/rnpicker/Props.cpp"
+  "/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/node_modules/@react-native-picker/picker/android/src/main/jni/../../../build/generated/source/codegen/jni/react/renderer/components/rnpicker/ShadowNodes.cpp"
+  "/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/node_modules/@react-native-picker/picker/android/src/main/jni/../../../build/generated/source/codegen/jni/react/renderer/components/rnpicker/States.cpp"
+  "/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/node_modules/@react-native-picker/picker/android/src/main/jni/../../../build/generated/source/codegen/jni/react/renderer/components/rnpicker/rnpickerJSI-generated.cpp"
+  )
+if(NOT "${NEW_GLOB}" STREQUAL "${OLD_GLOB}")
+  message("-- GLOB mismatch!")
+  file(TOUCH_NOCREATE "/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/android/app/.cxx/RelWithDebInfo/5c4c3o34/armeabi-v7a/CMakeFiles/cmake.verify_globs")
+endif()
+
 # react_codegen_SRCS at /Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/node_modules/react-native-gesture-handler/android/build/generated/source/codegen/jni/CMakeLists.txt:9 (file)
 file(GLOB NEW_GLOB LIST_DIRECTORIES true "/Users/rgarlapallay/Desktop/Workspace/ReactPractice_K/CrusherMate/node_modules/react-native-gesture-handler/android/build/generated/source/codegen/jni/*.cpp")
 set(OLD_GLOB

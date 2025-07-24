@@ -66,11 +66,18 @@ const TruckEntryScreen = ({ navigation, route }) => {
   const [userRole, setUserRole] = useState('user');
 
   // Get dynamic data from app config
-  const materialTypes = appConfig?.materialTypes || [
+  const allMaterialTypes = appConfig?.materialTypes || [
     { value: 'M-Sand', label: 'M-Sand' },
     { value: 'P-Sand', label: 'P-Sand' },
     { value: 'Blue Metal', label: 'Blue Metal' },
+    { value: 'Raw Stone', label: 'Raw Stone' },
   ];
+
+  // Filter material types based on entry type
+  const materialTypes =
+    entryType === 'Sales'
+      ? allMaterialTypes.filter(type => type.value !== 'Raw Stone')
+      : allMaterialTypes.filter(type => type.value === 'Raw Stone');
   const entryTypes = appConfig?.entryTypes || [
     { value: 'Sales', label: 'Sales' },
     { value: 'Raw Stone', label: 'Raw Stone' },
@@ -733,6 +740,7 @@ const TruckEntryScreen = ({ navigation, route }) => {
         {entryType === 'Sales' && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Material Type</Text>
+
             <TouchableOpacity
               style={styles.dropdownButton}
               onPress={() => setShowMaterialTypeModal(true)}

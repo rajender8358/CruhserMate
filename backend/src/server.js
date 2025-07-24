@@ -134,6 +134,76 @@ app.use('/api/dashboard', authenticateToken, dashboardRoutes);
 app.use('/api/config', authenticateToken, configRoutes);
 app.use('/api/reports', authenticateToken, reportRoutes);
 
+// Health check endpoint
+app.get('/api/health', async (req, res) => {
+  try {
+    const dbStatus =
+      mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
+    const uptime = process.uptime();
+
+    res.json({
+      success: true,
+      message: 'Server is healthy',
+      data: {
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        uptime: `${Math.floor(uptime / 3600)}h ${Math.floor(
+          (uptime % 3600) / 60,
+        )}m ${Math.floor(uptime % 60)}s`,
+        database: {
+          status: dbStatus,
+          name: mongoose.connection.name || 'unknown',
+          host: mongoose.connection.host || 'unknown',
+        },
+        environment: process.env.NODE_ENV || 'development',
+        version: '1.0.0',
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Health check failed',
+      error: error.message,
+    });
+  }
+});
+
+// Database connectivity test endpoint
+app.get('/api/health/db', async (req, res) => {
+  try {
+    // Test database connection with timeout
+    const testQuery = Promise.race([
+      mongoose.connection.db.admin().ping(),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Database ping timeout')), 5000),
+      ),
+    ]);
+
+    await testQuery;
+
+    res.json({
+      success: true,
+      message: 'Database connection is healthy',
+      data: {
+        status: 'connected',
+        timestamp: new Date().toISOString(),
+        database: mongoose.connection.name,
+        host: mongoose.connection.host,
+      },
+    });
+  } catch (error) {
+    res.status(503).json({
+      success: false,
+      message: 'Database connection failed',
+      error: error.message,
+      data: {
+        status: 'disconnected',
+        timestamp: new Date().toISOString(),
+      },
+    });
+  }
+});
+
 // Error handling middleware
 app.use(errorHandler);
 

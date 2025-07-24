@@ -30,7 +30,12 @@ const DashboardScreen = () => {
     todayEntries: 0,
   });
   const [selectedDay, setSelectedDay] = useState('all');
-  const [dayData, setDayData] = useState({});
+  const [dayData, setDayData] = useState({
+    startDate: null,
+    endDate: null,
+    startDateObj: null,
+    endDateObj: null,
+  });
   const [allEntries, setAllEntries] = useState([]);
   const [pagination, setPagination] = useState({
     hasNextPage: false,
@@ -85,6 +90,12 @@ const DashboardScreen = () => {
   };
 
   const getDayDates = dayType => {
+    // Defensive check for undefined dayType
+    if (!dayType) {
+      console.warn('getDayDates: dayType is undefined, using "all"');
+      dayType = 'all';
+    }
+
     const weekDates = getCurrentWeekDates();
     const today = new Date();
     const currentDay = today.getDay();
@@ -94,10 +105,6 @@ const DashboardScreen = () => {
     }
 
     // Calculate the date for the selected day
-    const daysFromSunday = currentDay;
-    const weekStart = new Date(today);
-    weekStart.setDate(today.getDate() - daysFromSunday);
-
     const dayNames = [
       'sunday',
       'monday',
@@ -109,8 +116,16 @@ const DashboardScreen = () => {
     ];
     const dayIndex = dayNames.indexOf(dayType);
 
-    const selectedDate = new Date(weekStart);
-    selectedDate.setDate(weekStart.getDate() + dayIndex);
+    // Defensive check for invalid dayType
+    if (dayIndex === -1) {
+      console.warn(`getDayDates: Invalid dayType "${dayType}", using "all"`);
+      return weekDates;
+    }
+
+    // Calculate the date for the selected day of the current week
+    const selectedDate = new Date(today);
+    const daysDiff = dayIndex - currentDay;
+    selectedDate.setDate(today.getDate() + daysDiff);
 
     // Only allow past days and today
     if (selectedDate > today) {
@@ -132,33 +147,29 @@ const DashboardScreen = () => {
         return;
       }
 
-      const dayDates = getDayDates(selectedDay);
+      // Defensive check for selectedDay
+      const currentSelectedDay = selectedDay || 'all';
+      const dayDates = getDayDates(currentSelectedDay);
 
       if (!dayDates) {
         Alert.alert('Error', 'Cannot view future dates');
         return;
       }
 
-      const response = await fetch(
-        `${API_BASE_URL}/dashboard/summary?startDate=${dayDates.startDate}&endDate=${dayDates.endDate}`,
-        {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${apiService.token}`,
-          },
-        },
+      const response = await apiService.getDashboardSummary(
+        'custom',
+        null,
+        dayDates.startDate,
+        dayDates.endDate,
       );
 
-      if (response.ok) {
-        const data = await response.json();
-        setDashboardData(data.data);
+      if (response.success) {
+        setDashboardData(response.data || {});
         setDayData(dayDates);
       } else {
-        const errorData = await response.json();
         Alert.alert(
           'Error',
-          errorData.message || 'Failed to fetch dashboard data',
+          response.message || 'Failed to fetch dashboard data',
         );
       }
     } catch (error) {
@@ -172,36 +183,32 @@ const DashboardScreen = () => {
   const fetchEntriesForDay = async (page = 1) => {
     try {
       if (!user) return;
-      const dayDates = getDayDates(selectedDay);
+
+      // Defensive check for selectedDay
+      const currentSelectedDay = selectedDay || 'all';
+      const dayDates = getDayDates(currentSelectedDay);
 
       if (!dayDates) return;
 
-      const response = await fetch(
-        `${API_BASE_URL}/truck-entries?startDate=${dayDates.startDate}&endDate=${dayDates.endDate}&page=${page}&limit=10`,
-        {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${apiService.token}`,
-          },
-        },
-      );
+      const response = await apiService.getTruckEntries({
+        startDate: dayDates.startDate,
+        endDate: dayDates.endDate,
+        page,
+        limit: 10,
+      });
 
-      if (response.ok) {
-        const data = await response.json();
-        setAllEntries(prev =>
-          page === 1 ? data.data.entries : [...prev, ...data.data.entries],
-        );
+      if (response.success) {
+        const entries = response.data || [];
+        setAllEntries(prev => (page === 1 ? entries : [...prev, ...entries]));
         setPagination(
-          data.data.pagination || {
+          response.pagination || {
             hasNextPage: false,
             currentPage: page,
             totalPages: 1,
           },
         );
       } else {
-        const errorData = await response.json();
-        Alert.alert('Error', errorData.message || 'Failed to fetch entries');
+        Alert.alert('Error', response.message || 'Failed to fetch entries');
       }
     } catch (error) {
       console.error('Fetch entries error:', error);
@@ -308,9 +315,7 @@ const DashboardScreen = () => {
       <View style={styles.header}>
         <View style={styles.headerRow}>
           <View style={styles.titleContainer}>
-            <Text style={styles.headerTitle}>
-              {user?.organization?.name ?? 'Owner'} Dashboard
-            </Text>
+            <Text style={styles.headerTitle}>Dashboard</Text>
           </View>
           <TouchableOpacity
             style={styles.backButton}
@@ -387,7 +392,7 @@ const DashboardScreen = () => {
               );
             })}
           </View>
-          {dayData.startDate && (
+          {dayData?.startDate && (
             <Text style={styles.weekRange}>
               {selectedDay === 'all'
                 ? `${new Date(
@@ -415,7 +420,8 @@ const DashboardScreen = () => {
               subtitle={
                 selectedDay === 'all'
                   ? 'This Week'
-                  : selectedDay.charAt(0).toUpperCase() + selectedDay.slice(1)
+                  : (selectedDay || 'all').charAt(0).toUpperCase() +
+                    (selectedDay || 'all').slice(1)
               }
               color={theme.COLORS.primary}
             />
@@ -431,7 +437,8 @@ const DashboardScreen = () => {
               subtitle={
                 selectedDay === 'all'
                   ? 'This Week'
-                  : selectedDay.charAt(0).toUpperCase() + selectedDay.slice(1)
+                  : (selectedDay || 'all').charAt(0).toUpperCase() +
+                    (selectedDay || 'all').slice(1)
               }
               color="#FF9500"
             />
@@ -478,7 +485,8 @@ const DashboardScreen = () => {
             Entries for{' '}
             {selectedDay === 'all'
               ? 'the Week'
-              : selectedDay.charAt(0).toUpperCase() + selectedDay.slice(1)}
+              : (selectedDay || 'all').charAt(0).toUpperCase() +
+                (selectedDay || 'all').slice(1)}
           </Text>
           {allEntries.length > 0 ? (
             allEntries.map((entry, index) => (

@@ -1,19 +1,27 @@
 // API Configuration
 import { Platform } from 'react-native';
 
-export const API_BASE_URL = 'http://192.168.29.242:3000/api';
+// Production URL - Deployed on Vercel
+const PRODUCTION_URL = 'https://crushermate-backend.vercel.app/api';
 
-// Uncomment below for local development testing
-// if (__DEV__) {
-//   if (Platform.OS === 'ios') {
-//     API_BASE_URL = 'http://localhost:3000/api'; // iOS Simulator
-//   } else {
-//     API_BASE_URL = 'http://192.168.29.243:3000/api'; // Android Emulator & Local Network
-//   }
-// }
+// Development URLs
+const DEV_URL = __DEV__ ? 'http://localhost:3000/api' : PRODUCTION_URL;
 
-// For physical device testing, update to your computer's IP address
-// Example: http://192.168.1.100:3000/api
+// For physical device testing in development, use your computer's IP address
+// Replace 192.168.1.100 with your actual computer's IP address
+const DEV_PHYSICAL_URL = 'http://192.168.29.242:3000/api';
+
+// For simulator testing, use localhost
+// const SIMULATOR_URL = 'http://localhost:3000/api';
+
+// Use localhost for simulator, production URL for production builds
+let API_BASE_URL = PRODUCTION_URL;
+
+// For physical device testing in development, uncomment the line below
+// and replace with your computer's IP address
+// API_BASE_URL = __DEV__ ? DEV_PHYSICAL_URL : PRODUCTION_URL;
+
+export { API_BASE_URL };
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -344,9 +352,16 @@ class ApiService {
     return this.request(`/truck-entries/summary?${queryParams}`);
   }
 
-  async getDashboardSummary(period = 'month', userId = null) {
+  async getDashboardSummary(
+    period = 'month',
+    userId = null,
+    startDate = null,
+    endDate = null,
+  ) {
     const params = new URLSearchParams({ period });
     if (userId) params.append('userId', userId);
+    if (startDate) params.append('startDate', startDate);
+    if (endDate) params.append('endDate', endDate);
     return this.request(`/dashboard/summary?${params}`);
   }
 
