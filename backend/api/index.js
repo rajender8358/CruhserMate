@@ -20,7 +20,6 @@ const organizationRoutes = require('../src/routes/organizationRoutes');
 const dashboardRoutes = require('../src/routes/dashboardRoutes');
 const configRoutes = require('../src/routes/configRoutes');
 const reportRoutes = require('../src/routes/reportRoutes');
-const ocrRoutes = require('../src/routes/ocrRoutes');
 
 const app = express();
 
@@ -94,14 +93,6 @@ app.get('/ping', (req, res) => {
 
 // API routes
 app.use('/api/auth', authRoutes);
-
-// Public file serving endpoint (no authentication required)
-const {
-  serveDownloadableFile,
-} = require('../src/controllers/reportController');
-app.get('/api/reports/file/:filename', serveDownloadableFile);
-
-// Protected API routes
 app.use('/api/users', authenticateToken, userRoutes);
 app.use('/api/truck-entries', authenticateToken, truckEntryRoutes);
 app.use('/api/material-rates', authenticateToken, materialRateRoutes);
@@ -109,7 +100,6 @@ app.use('/api/organizations', authenticateToken, organizationRoutes);
 app.use('/api/dashboard', authenticateToken, dashboardRoutes);
 app.use('/api/config', authenticateToken, configRoutes);
 app.use('/api/reports', authenticateToken, reportRoutes);
-app.use('/api/ocr', authenticateToken, ocrRoutes);
 
 // Health check endpoint
 app.get('/api/health', async (req, res) => {
