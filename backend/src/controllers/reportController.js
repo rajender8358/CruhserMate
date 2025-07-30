@@ -251,6 +251,15 @@ const generateExportData = asyncHandler(async (req, res) => {
 
     // Filter by organization if provided
     if (organizationId) {
+      // Validate that organizationId is a valid ObjectId
+      const mongoose = require('mongoose');
+      if (!mongoose.Types.ObjectId.isValid(organizationId)) {
+        throw new AppError(
+          'Invalid organization ID format',
+          400,
+          'INVALID_ORGANIZATION_ID',
+        );
+      }
       filter.organization = organizationId;
     }
 
