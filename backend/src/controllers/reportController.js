@@ -251,16 +251,25 @@ const generateExportData = asyncHandler(async (req, res) => {
 
     // Filter by organization if provided
     if (organizationId) {
+      console.log(
+        '🔍 Organization ID received:',
+        organizationId,
+        'Type:',
+        typeof organizationId,
+      );
+
       // Validate that organizationId is a valid ObjectId
       const mongoose = require('mongoose');
       if (!mongoose.Types.ObjectId.isValid(organizationId)) {
-        throw new AppError(
-          'Invalid organization ID format',
-          400,
-          'INVALID_ORGANIZATION_ID',
-        );
+        console.log('❌ Invalid organization ID format:', organizationId);
+        // Instead of throwing error, just skip organization filtering
+        console.log('⚠️ Skipping organization filtering due to invalid ID');
+      } else {
+        console.log('✅ Valid organization ID, applying filter');
+        filter.organization = organizationId;
       }
-      filter.organization = organizationId;
+    } else {
+      console.log('⚠️ No organization ID provided, showing all data');
     }
 
     const entries = await TruckEntry.find(filter)

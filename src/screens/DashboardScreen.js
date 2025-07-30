@@ -73,6 +73,15 @@ const DashboardScreen = () => {
       console.log(`📊 Exporting ${type.toUpperCase()} for period: ${period}`);
       console.log(`📅 Date range: ${startDate} to ${endDate}`);
 
+      // Debug user organization
+      console.log('🔍 User object:', user);
+      console.log('🔍 User organization:', user?.organization);
+      console.log('🔍 Organization type:', typeof user?.organization);
+
+      // Debug: Log what we're sending
+      console.log('🔍 User organization:', user?.organization);
+      console.log('🔍 User object:', user);
+
       // Generate downloadable report
       const response = await apiService.generateDownloadableReport({
         startDate,
