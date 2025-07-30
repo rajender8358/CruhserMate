@@ -27,12 +27,15 @@ const RegisterScreen = ({ navigation }) => {
   useEffect(() => {
     const fetchOrganizations = async () => {
       try {
-        const orgs = await apiService.getOrganizations();
+        const response = await apiService.getOrganizations();
+        // Handle the new API response format
+        const orgs = response.data || response;
         setOrganizations(orgs);
-        if (orgs.length > 0) {
+        if (orgs && orgs.length > 0) {
           setSelectedOrganization(orgs[0]._id);
         }
       } catch (error) {
+        console.error('Error fetching organizations:', error);
         Alert.alert('Error', 'Failed to fetch organizations.');
       }
     };
