@@ -458,6 +458,20 @@ const TrackScreen = ({ navigation }) => {
           <Text style={styles.emptyStateButtonIcon}>+</Text>
           <Text style={styles.emptyStateButtonText}>Add Entry</Text>
         </TouchableOpacity>
+
+        {/* Owner Dashboard Button - Show for owners even in empty state */}
+        {userRole === 'owner' && (
+          <TouchableOpacity
+            style={[
+              styles.emptyStateButton,
+              { backgroundColor: theme.COLORS.secondary, marginTop: 12 },
+            ]}
+            onPress={() => navigation.navigate(APP_ROUTES.DASHBOARD)}
+          >
+            <Text style={styles.emptyStateButtonIcon}>📊</Text>
+            <Text style={styles.emptyStateButtonText}>Dashboard</Text>
+          </TouchableOpacity>
+        )}
       </View>
     );
   };
@@ -479,6 +493,8 @@ const TrackScreen = ({ navigation }) => {
             </Text>
           </View>
           <View style={styles.headerRight}>
+            {/* Dashboard Button for Owners */}
+
             <TouchableOpacity
               style={styles.headerLogoutButton}
               onPress={handleLogout}
