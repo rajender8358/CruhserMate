@@ -2,7 +2,8 @@
 import { Platform } from 'react-native';
 
 // Production URL - Deployed on Vercel
-const PRODUCTION_URL = 'https://crushermate-backend.vercel.app/api';
+const PRODUCTION_URL =
+  'https://crushermate-backend-l6dcn4hqm-rajender-reddys-projects.vercel.app/api';
 
 // Development URLs
 const DEV_URL = __DEV__ ? 'http://192.168.29.242:3000/api' : PRODUCTION_URL;
