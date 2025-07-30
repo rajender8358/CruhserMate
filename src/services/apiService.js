@@ -11,7 +11,7 @@ const DEV_URL = __DEV__ ? 'http://192.168.29.242:3000/api' : PRODUCTION_URL;
 // Replace 192.168.29.242 with your actual computer's IP address
 const DEV_PHYSICAL_URL = 'http://192.168.29.242:3000/api';
 
-// Use computer's IP for development, production URL for production builds
+// Use production URL for release builds, development URL for debug builds
 let API_BASE_URL = __DEV__ ? DEV_URL : PRODUCTION_URL;
 
 console.log('🌐 API Service - Using URL:', API_BASE_URL);
