@@ -232,22 +232,10 @@ const getReportData = asyncHandler(async (req, res) => {
 
 // @desc    Generate export data
 // @route   POST /api/reports/export
-// @access  Public (with token in body)
+// @access  Public (no authentication required)
 const generateExportData = asyncHandler(async (req, res) => {
   try {
-    const { startDate, endDate, format = 'csv', token } = req.body;
-
-    // Verify token manually
-    if (!token) {
-      throw new AppError('Authentication token required', 401, 'UNAUTHORIZED');
-    }
-
-    try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      req.user = decoded.user;
-    } catch (jwtError) {
-      throw new AppError('Invalid or expired token', 401, 'UNAUTHORIZED');
-    }
+    const { startDate, endDate, format = 'csv' } = req.body;
 
     if (!startDate || !endDate) {
       throw new AppError('Start date and end date are required', 400);
@@ -260,9 +248,7 @@ const generateExportData = asyncHandler(async (req, res) => {
         $lte: new Date(endDate),
       },
     };
-    if (req.user.role !== 'owner') {
-      filter.userId = req.user.id;
-    }
+    // No user filtering - get all data for PDF export
 
     const entries = await TruckEntry.find(filter)
       .populate('userId', 'username email')
@@ -271,13 +257,13 @@ const generateExportData = asyncHandler(async (req, res) => {
     const summary = await TruckEntry.getSummaryByDateRange(
       new Date(startDate),
       new Date(endDate),
-      filter,
+      {}, // No user filtering for PDF export
     );
 
     const exportData = {
       reportInfo: {
         title: `CrusherMate Report (${format.toUpperCase()})`,
-        generatedBy: req.user.username,
+        generatedBy: 'CrusherMate System',
         dateRange: { startDate, endDate },
       },
       summary,

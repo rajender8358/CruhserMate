@@ -378,16 +378,12 @@ class ApiService {
   }
 
   async generateDownloadableReport(exportOptions) {
-    const token = await AsyncStorage.getItem('userToken');
     const response = await fetch(`${API_BASE_URL}/reports/export`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        ...exportOptions,
-        token: token,
-      }),
+      body: JSON.stringify(exportOptions),
     });
 
     if (!response.ok) {
