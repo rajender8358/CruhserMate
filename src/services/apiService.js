@@ -378,6 +378,8 @@ class ApiService {
   }
 
   async generateDownloadableReport(exportOptions) {
+    console.log('🔍 PDF Export - Starting export with options:', exportOptions);
+
     const response = await fetch(`${API_BASE_URL}/reports/export`, {
       method: 'POST',
       headers: {
@@ -386,8 +388,12 @@ class ApiService {
       body: JSON.stringify(exportOptions),
     });
 
+    console.log('🔍 PDF Export - Response status:', response.status);
+    console.log('🔍 PDF Export - Response headers:', response.headers);
+
     if (!response.ok) {
       const errorData = await response.json();
+      console.error('🔍 PDF Export - Error response:', errorData);
       throw new Error(
         errorData.message || `HTTP error! status: ${response.status}`,
       );
@@ -398,6 +404,8 @@ class ApiService {
     const filename = contentDisposition
       ? contentDisposition.split('filename=')[1]?.replace(/"/g, '')
       : `CrusherMate_Report_${new Date().toISOString().split('T')[0]}.pdf`;
+
+    console.log('🔍 PDF Export - Success, filename:', filename);
 
     // For React Native, return the direct URL to open in browser
     return {
