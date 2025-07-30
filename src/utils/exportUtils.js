@@ -4,6 +4,7 @@ import { Alert, Linking, Share } from 'react-native';
 const generateCSVContent = (reportData, reportType, filters) => {
   const headers = [
     'Date',
+    'Time',
     'Entry Type',
     'Truck Number',
     'Material Type',
@@ -16,6 +17,7 @@ const generateCSVContent = (reportData, reportType, filters) => {
   reportData.forEach(item => {
     const row = [
       item.date,
+      item.time,
       item.entryType,
       item.truckNumber,
       item.materialType || 'N/A',
@@ -32,11 +34,11 @@ const generateCSVContent = (reportData, reportType, filters) => {
 
   const totalSales = reportData
     .filter(r => r.entryType === 'Sales')
-    .reduce((sum, r) => sum + r.total, 0);
+    .reduce((sum, r) => sum + (r.total || 0), 0);
 
   const totalRawStone = reportData
     .filter(r => r.entryType === 'Raw Stone')
-    .reduce((sum, r) => sum + r.total, 0);
+    .reduce((sum, r) => sum + (r.total || 0), 0);
 
   csvRows.push(`Total Sales,${totalSales}`);
   csvRows.push(`Raw Stone Cost,${totalRawStone}`);
@@ -48,16 +50,31 @@ const generateCSVContent = (reportData, reportType, filters) => {
 // Generate HTML content for PDF
 const generateHTMLContent = (reportData, reportType, filters) => {
   const formatCurrency = amount => `₹${amount.toLocaleString('en-IN')}`;
+  const formatDate = dateStr => {
+    if (!dateStr || dateStr === 'N/A') return 'N/A';
+    try {
+      return new Date(dateStr).toLocaleDateString('en-IN');
+    } catch {
+      return dateStr;
+    }
+  };
 
   const totalSales = reportData
     .filter(r => r.entryType === 'Sales')
-    .reduce((sum, r) => sum + r.total, 0);
+    .reduce((sum, r) => sum + (r.total || 0), 0);
 
   const totalRawStone = reportData
     .filter(r => r.entryType === 'Raw Stone')
-    .reduce((sum, r) => sum + r.total, 0);
+    .reduce((sum, r) => sum + (r.total || 0), 0);
 
   const netProfit = totalSales - totalRawStone;
+
+  // Get period info for dashboard reports
+  const periodInfo = filters.period
+    ? `Period: ${
+        filters.period.charAt(0).toUpperCase() + filters.period.slice(1)
+      }`
+    : 'All Entries';
 
   return `
     <!DOCTYPE html>
@@ -166,28 +183,6 @@ const generateHTMLContent = (reportData, reportType, filters) => {
             .entry-sales { background-color: #e8f5e8; }
             .entry-raw { background-color: #ffe8e8; }
             .entries-table tr:hover { background-color: #f5f5f5; }
-            .download-section {
-                margin: 30px 0;
-                padding: 20px;
-                background-color: #f0f8ff;
-                border-radius: 8px;
-                border: 2px dashed #2E86AB;
-                text-align: center;
-            }
-            .download-button {
-                background-color: #2E86AB;
-                color: white;
-                padding: 12px 24px;
-                border: none;
-                border-radius: 6px;
-                font-size: 16px;
-                font-weight: bold;
-                cursor: pointer;
-                margin: 10px;
-            }
-            .download-button:hover {
-                background-color: #1a5d7a;
-            }
             .footer {
                 margin-top: 40px;
                 text-align: center;
@@ -204,32 +199,6 @@ const generateHTMLContent = (reportData, reportType, filters) => {
                 .entries-section { page-break-before: auto; }
             }
         </style>
-        <script>
-            function downloadAsPDF() {
-                window.print();
-            }
-            
-            function downloadAsCSV() {
-                const csvContent = \`${generateCSVContent(
-                  reportData,
-                  reportType,
-                  filters,
-                )
-                  .replace(/\n/g, '\\n')
-                  .replace(/`/g, '\\`')}\`;
-                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-                const link = document.createElement('a');
-                const url = URL.createObjectURL(blob);
-                link.setAttribute('href', url);
-                link.setAttribute('download', 'CrusherMate_${reportType}_Report_${
-    new Date().toISOString().split('T')[0]
-  }.csv');
-                link.style.visibility = 'hidden';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-            }
-        </script>
     </head>
     <body>
         <div class="header">
@@ -239,19 +208,10 @@ const generateHTMLContent = (reportData, reportType, filters) => {
                 📅 Generated on: ${new Date().toLocaleDateString(
                   'en-IN',
                 )} at ${new Date().toLocaleTimeString('en-IN')}<br>
-                🔍 Filters Applied: Material - ${
-                  filters.materialFilter
-                } | Entry Type - ${filters.entryTypeFilter}
+                🔍 ${periodInfo} | Date Range: ${filters.startDate} to ${
+    filters.endDate
+  }
             </div>
-        </div>
-
-        <div class="download-section">
-            <h3>📥 Download Options</h3>
-            <p>Click the buttons below to download your report:</p>
-            <button class="download-button" onclick="downloadAsPDF()">📄 Download as PDF</button>
-            <button class="download-button" onclick="downloadAsCSV()">📊 Download as CSV</button>
-            <p><small>PDF: Use your browser's print dialog and select "Save as PDF"<br>
-            CSV: Direct download to your device for opening in Excel/Google Sheets</small></p>
         </div>
 
         <div class="summary-section">
@@ -286,6 +246,7 @@ const generateHTMLContent = (reportData, reportType, filters) => {
                 <thead>
                     <tr>
                         <th>📅 Date</th>
+                        <th>🕐 Time</th>
                         <th>📝 Type</th>
                         <th>🚛 Truck Number</th>
                         <th>📦 Material</th>
@@ -303,7 +264,8 @@ const generateHTMLContent = (reportData, reportType, filters) => {
                             ? 'entry-sales'
                             : 'entry-raw'
                         }">
-                            <td>${item.date}</td>
+                            <td>${formatDate(item.date)}</td>
+                            <td>${item.time}</td>
                             <td><strong>${item.entryType}</strong></td>
                             <td>${item.truckNumber}</td>
                             <td>${item.materialType || 'N/A'}</td>

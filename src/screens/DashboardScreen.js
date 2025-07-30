@@ -8,6 +8,7 @@ import {
   Alert,
   ActivityIndicator,
   Linking,
+  Clipboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -16,6 +17,7 @@ import { API_BASE_URL } from '../services/apiService';
 import theme from '../assets/theme';
 import apiService from '../services/apiService';
 import { formatCurrency } from '../utils/formatting';
+import { exportToPDF, exportToCSV } from '../utils/exportUtils';
 import { APP_ROUTES } from '../navigations/Routes';
 
 const DashboardScreen = () => {
@@ -59,6 +61,76 @@ const DashboardScreen = () => {
     }
     return true;
   }, [user, navigation]);
+
+  const handleExport = async type => {
+    try {
+      setExporting(true);
+
+      // Get the current period data
+      const period = selectedDay === 'all' ? 'week' : selectedDay;
+      const { startDate, endDate } = getDayDates(selectedDay);
+
+      console.log(`📊 Exporting ${type.toUpperCase()} for period: ${period}`);
+      console.log(`📅 Date range: ${startDate} to ${endDate}`);
+
+      // Generate downloadable report
+      const response = await apiService.generateDownloadableReport({
+        startDate,
+        endDate,
+        format: type,
+        reportType: 'dashboard',
+      });
+
+      if (!response.success) {
+        throw new Error(response.message || 'Failed to generate report');
+      }
+
+      const { downloadUrl, fileName, entriesCount, summary } = response.data;
+
+      console.log(`📈 Report generated: ${entriesCount} entries`);
+      console.log(`📥 Download URL: ${downloadUrl}`);
+
+      // Open the download URL in browser
+      try {
+        await Linking.openURL(downloadUrl);
+
+        Alert.alert(
+          `${type.toUpperCase()} Report Generated`,
+          `Your ${type.toUpperCase()} report has been generated with ${entriesCount} entries.\n\n` +
+            `Total Sales: ₹${summary.totalSales.toLocaleString('en-IN')}\n` +
+            `Raw Stone Cost: ₹${summary.totalRawStone.toLocaleString(
+              'en-IN',
+            )}\n` +
+            `Net Profit: ₹${summary.netProfit.toLocaleString('en-IN')}\n\n` +
+            `The report has been opened in your browser. You can download it from there.`,
+          [{ text: 'OK' }],
+        );
+      } catch (linkError) {
+        console.error('❌ Failed to open download link:', linkError);
+        Alert.alert(
+          'Download Link Generated',
+          `Your ${type.toUpperCase()} report has been generated.\n\n` +
+            `Please copy this link and open it in your browser:\n\n${downloadUrl}`,
+          [
+            {
+              text: 'Copy Link',
+              onPress: () => Clipboard.setString(downloadUrl),
+            },
+            { text: 'OK' },
+          ],
+        );
+      }
+    } catch (error) {
+      console.error('❌ Export error:', error);
+      Alert.alert(
+        'Export Failed',
+        `Failed to generate ${type.toUpperCase()} report: ${error.message}`,
+        [{ text: 'OK' }],
+      );
+    } finally {
+      setExporting(false);
+    }
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -216,47 +288,6 @@ const DashboardScreen = () => {
     }
   };
 
-  const handleExport = async format => {
-    setExporting(true);
-    try {
-      const dayDates = getDayDates(selectedDay);
-      if (!dayDates) {
-        Alert.alert('Error', 'Cannot export future dates');
-        return;
-      }
-
-      // 1. Request the file from the backend
-      const exportOptions = {
-        startDate: dayDates.startDate,
-        endDate: dayDates.endDate,
-        format,
-      };
-
-      const response = await apiService.exportData(exportOptions);
-
-      if (response.success) {
-        const { token, fileId } = response.data;
-        const downloadUrl = `${API_BASE_URL}/reports/download/${fileId}?token=${token}`;
-
-        try {
-          await Linking.openURL(downloadUrl);
-        } catch (err) {
-          Alert.alert(
-            'Error',
-            'Failed to open download link. Please ensure you have a web browser installed and enabled.',
-          );
-        }
-      } else {
-        Alert.alert('Error', response.message || 'Failed to export data');
-      }
-    } catch (error) {
-      console.error('Export error:', error);
-      Alert.alert('Error', 'Failed to export data');
-    } finally {
-      setExporting(false);
-    }
-  };
-
   const MetricCard = ({
     title,
     value,
@@ -275,9 +306,12 @@ const DashboardScreen = () => {
       if (!timeString) return '';
       const [hour, minute] = timeString.split(':');
       const hourNum = parseInt(hour, 10);
+      if (isNaN(hourNum)) return '';
+
+      // Convert 24-hour format to 12-hour format
       const ampm = hourNum >= 12 ? 'PM' : 'AM';
       const formattedHour = hourNum % 12 || 12;
-      return `${formattedHour}:${minute} ${ampm}`;
+      return `${formattedHour}:${minute || '00'} ${ampm}`;
     };
 
     return (
@@ -290,6 +324,7 @@ const DashboardScreen = () => {
           </Text>
         </View>
         <Text style={styles.entryDetails}>
+          {entry.truckNumber} {entry.truckName && `- ${entry.truckName}`} -{' '}
           {entry.materialType || 'N/A'} - {entry.units} units
         </Text>
         <Text style={styles.entryPrice}>
@@ -524,20 +559,6 @@ const DashboardScreen = () => {
               <ActivityIndicator color="#FFFFFF" />
             ) : (
               <Text style={styles.actionButtonText}>📄 Download PDF</Text>
-            )}
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.actionButton,
-              { backgroundColor: theme.COLORS.primary },
-            ]}
-            onPress={() => handleExport('csv')}
-            disabled={exporting}
-          >
-            {exporting ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.actionButtonText}>📊 Download CSV</Text>
             )}
           </TouchableOpacity>
         </View>

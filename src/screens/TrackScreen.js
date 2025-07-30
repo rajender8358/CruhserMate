@@ -281,6 +281,8 @@ const TrackScreen = ({ navigation }) => {
       const [hour, minute] = timeString.split(':');
       const hourNum = parseInt(hour, 10);
       if (isNaN(hourNum)) return '';
+
+      // Convert 24-hour format to 12-hour format
       const ampm = hourNum >= 12 ? 'PM' : 'AM';
       const formattedHour = hourNum % 12 || 12;
       return `${formattedHour}:${minute || '00'} ${ampm}`;
@@ -297,6 +299,9 @@ const TrackScreen = ({ navigation }) => {
             <Text style={styles.truckNumber}>
               {entry?.truckNumber || 'Unknown'}
             </Text>
+            {entry?.truckName && (
+              <Text style={styles.truckName}>{entry.truckName}</Text>
+            )}
             <Text style={styles.entryTime}>{formatTime(entry?.entryTime)}</Text>
           </View>
           <View style={styles.entryActions}>
@@ -753,6 +758,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: theme.COLORS.primary,
+  },
+  truckName: {
+    fontSize: 14,
+    color: theme.COLORS.gray,
+    marginTop: 2,
   },
   entryTime: {
     fontSize: 14,

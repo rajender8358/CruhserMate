@@ -33,6 +33,9 @@ const TruckEntryScreen = ({ navigation, route }) => {
   const [truckNumber, setTruckNumber] = useState(
     editMode ? entryData?.truckNumber || '' : '',
   );
+  const [truckName, setTruckName] = useState(
+    editMode ? entryData?.truckName || '' : '',
+  );
   const [entryType, setEntryType] = useState(
     editMode ? entryData?.entryType || '' : '',
   );
@@ -48,6 +51,7 @@ const TruckEntryScreen = ({ navigation, route }) => {
   const [totalAmount, setTotalAmount] = useState(
     editMode ? entryData?.totalAmount?.toString() || '' : '',
   );
+  const [notes, setNotes] = useState(editMode ? entryData?.notes || '' : '');
   const [showEntryTypeModal, setShowEntryTypeModal] = useState(false);
   const [showMaterialTypeModal, setShowMaterialTypeModal] = useState(false);
   const [showImagePickerModal, setShowImagePickerModal] = useState(false);
@@ -238,19 +242,41 @@ const TruckEntryScreen = ({ navigation, route }) => {
     }
   };
 
-  const extractTruckNumber = imageUri => {
-    // This is a placeholder for OCR functionality
-    // In a real app, you would use OCR libraries like react-native-text-detector
-    // For now, we'll generate a sample truck number
-    const sampleNumbers = [
-      'KA01AB1234',
-      'MH12CD5678',
-      'TN09EF9012',
-      'DL03GH3456',
-    ];
-    const randomNumber =
-      sampleNumbers[Math.floor(Math.random() * sampleNumbers.length)];
-    setTruckNumber(randomNumber);
+  const extractTruckNumber = async imageUri => {
+    try {
+      console.log('🔍 Starting OCR extraction for truck number...');
+
+      const imageFile = { uri: imageUri };
+      const response = await apiService.extractTruckNumberFromImage(imageFile);
+
+      if (response.success && response.data.truckNumber) {
+        console.log(
+          `✅ OCR extracted truck number: ${response.data.truckNumber}`,
+        );
+        setTruckNumber(response.data.truckNumber);
+        Alert.alert(
+          'Truck Number Detected',
+          `Found truck number: ${response.data.truckNumber}`,
+          [{ text: 'OK' }],
+        );
+      } else {
+        console.log('❌ No truck number found in image');
+        setTruckNumber(''); // Clear the field if no number found
+        Alert.alert(
+          'No Truck Number Found',
+          'No truck number was detected in the image. Please enter it manually.',
+          [{ text: 'OK' }],
+        );
+      }
+    } catch (error) {
+      console.error('❌ OCR extraction failed:', error);
+      setTruckNumber(''); // Clear the field on error
+      Alert.alert(
+        'OCR Processing Error',
+        'Failed to process image for truck number. Please enter it manually.',
+        [{ text: 'OK' }],
+      );
+    }
   };
 
   const showImagePicker = () => {
@@ -283,7 +309,7 @@ const TruckEntryScreen = ({ navigation, route }) => {
       },
     };
 
-    launchCamera(options, response => {
+    launchCamera(options, async response => {
       if (response.didCancel) {
         return;
       }
@@ -296,8 +322,7 @@ const TruckEntryScreen = ({ navigation, route }) => {
       }
       if (response.assets && response.assets[0]) {
         setTruckImage(response.assets[0]);
-        extractTruckNumber(response.assets[0].uri);
-        Alert.alert('Success', 'Truck image captured successfully!');
+        await extractTruckNumber(response.assets[0].uri);
       }
     });
   };
@@ -324,7 +349,7 @@ const TruckEntryScreen = ({ navigation, route }) => {
       maxHeight: 1000,
     };
 
-    launchImageLibrary(options, response => {
+    launchImageLibrary(options, async response => {
       if (response.didCancel) {
         return;
       }
@@ -337,8 +362,7 @@ const TruckEntryScreen = ({ navigation, route }) => {
       }
       if (response.assets && response.assets[0]) {
         setTruckImage(response.assets[0]);
-        extractTruckNumber(response.assets[0].uri);
-        Alert.alert('Success', 'Truck image selected successfully!');
+        await extractTruckNumber(response.assets[0].uri);
       }
     });
   };
@@ -430,27 +454,26 @@ const TruckEntryScreen = ({ navigation, route }) => {
         return;
       }
 
-      // Get current time for entry
-      const now = new Date();
-      const entryTime = now.toLocaleTimeString('en-GB', {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-      }); // HH:MM format
-
       // Get today's date in YYYY-MM-DD format
       const today = new Date();
       const todayString = today.toISOString().split('T')[0];
 
       const entryData = {
         truckNumber: truckNumber.toUpperCase(),
+        truckName: truckName.trim(),
         entryType,
         materialType: entryType === 'Sales' ? materialType : null,
         units: parseFloat(units),
         ratePerUnit: parseFloat(ratePerUnit),
         entryDate: todayString, // Set to today's date
-        // entryTime: removed, backend will set
+        // entryTime: removed - backend will automatically set the current time
+        notes: notes.trim(),
       };
+
+      console.log(
+        '📤 Debug - Entry data being sent:',
+        JSON.stringify(entryData, null, 2),
+      );
 
       // Debug token loading
       const savedToken = await AsyncStorage.getItem('userToken');
@@ -530,11 +553,13 @@ const TruckEntryScreen = ({ navigation, route }) => {
   const resetForm = () => {
     setTruckImage(null);
     setTruckNumber('');
+    setTruckName('');
     setEntryType('');
     setMaterialType('');
     setUnits('');
     setRatePerUnit('');
     setTotalAmount('');
+    setNotes('');
     clearMessages();
   };
 
@@ -707,13 +732,36 @@ const TruckEntryScreen = ({ navigation, route }) => {
               placeholder="e.g., KA01AB1234"
               placeholderTextColor={theme.COLORS.placeholder}
               value={truckNumber}
-              onChangeText={setTruckNumber}
+              onChangeText={text => {
+                // Auto-convert to uppercase and remove spaces
+                const upperText = text.toUpperCase().replace(/\s/g, '');
+                setTruckNumber(upperText);
+              }}
               autoCapitalize="characters"
               maxLength={15}
             />
           </View>
           <Text style={styles.helperText}>
-            Format: 2 letters + 2 numbers + 1-2 letters + 4 numbers
+            Enter any combination of letters and numbers (5-15 characters)
+          </Text>
+        </View>
+
+        {/* Truck Name */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Truck Name</Text>
+          <View style={styles.inputWrapper}>
+            <TextInput
+              style={styles.textInput}
+              placeholder="e.g., ABC Truck"
+              placeholderTextColor={theme.COLORS.placeholder}
+              value={truckName}
+              onChangeText={text => setTruckName(text)}
+              autoCapitalize="words"
+              maxLength={50}
+            />
+          </View>
+          <Text style={styles.helperText}>
+            Enter the name of the truck (optional)
           </Text>
         </View>
 
@@ -831,6 +879,24 @@ const TruckEntryScreen = ({ navigation, route }) => {
                 : '0'}
             </Text>
           )}
+        </View>
+
+        {/* Notes */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Notes (Optional)</Text>
+          <View style={styles.inputWrapper}>
+            <TextInput
+              style={styles.textInput}
+              placeholder="Add any notes for this entry (e.g., driver name, vehicle details)"
+              placeholderTextColor={theme.COLORS.placeholder}
+              value={notes}
+              onChangeText={text => setNotes(text)}
+              multiline
+              numberOfLines={3}
+              maxLength={200}
+            />
+          </View>
+          <Text style={styles.helperText}>{notes.length}/200 characters</Text>
         </View>
 
         {/* Success Message */}

@@ -11,18 +11,30 @@ const createTruckEntryValidation = [
     .notEmpty()
     .withMessage('Truck number is required')
     .custom(value => {
-      // More flexible truck number validation
-      const truckNumber = value.toUpperCase();
-      // Allow various formats: KA01AB1234, KA-01-AB-1234, KA 01 AB 1234, etc.
-      const pattern =
-        /^[A-Z]{2}[\s\-]?[0-9]{2}[\s\-]?[A-Z]{1,2}[\s\-]?[0-9]{4}$/;
-      if (!pattern.test(truckNumber)) {
-        throw new Error(
-          'Please provide a valid truck number (e.g., KA01AB1234, KA-01-AB-1234)',
-        );
+      // Convert to uppercase and remove spaces
+      const truckNumber = value.toString().toUpperCase().replace(/\s/g, '');
+
+      // More flexible validation - allow any alphanumeric format
+      // Minimum 5 characters, maximum 15 characters
+      if (truckNumber.length < 5 || truckNumber.length > 15) {
+        throw new Error('Truck number must be between 5 and 15 characters');
       }
+
+      // Allow letters and numbers only
+      const pattern = /^[A-Z0-9]+$/;
+      if (!pattern.test(truckNumber)) {
+        throw new Error('Truck number can only contain letters and numbers');
+      }
+
       return true;
     }),
+  body('truckName')
+    .notEmpty()
+    .withMessage('Truck name is required')
+    .isLength({ max: 20 })
+    .withMessage('Truck name cannot exceed 20 characters')
+    .matches(/^[A-Za-z\s]+$/)
+    .withMessage('Truck name can only contain alphabets and spaces'),
   body('entryType')
     .isIn(['Sales', 'Raw Stone'])
     .withMessage('Entry type must be either Sales or Raw Stone'),
@@ -53,18 +65,31 @@ const updateTruckEntryValidation = [
     .optional()
     .custom(value => {
       if (!value) return true; // Optional field
-      // More flexible truck number validation
-      const truckNumber = value.toUpperCase();
-      // Allow various formats: KA01AB1234, KA-01-AB-1234, KA 01 AB 1234, etc.
-      const pattern =
-        /^[A-Z]{2}[\s\-]?[0-9]{2}[\s\-]?[A-Z]{1,2}[\s\-]?[0-9]{4}$/;
-      if (!pattern.test(truckNumber)) {
-        throw new Error(
-          'Please provide a valid truck number (e.g., KA01AB1234, KA-01-AB-1234)',
-        );
+      // Convert to uppercase and remove spaces
+      const truckNumber = value.toString().toUpperCase().replace(/\s/g, '');
+
+      // More flexible validation - allow any alphanumeric format
+      // Minimum 5 characters, maximum 15 characters
+      if (truckNumber.length < 5 || truckNumber.length > 15) {
+        throw new Error('Truck number must be between 5 and 15 characters');
       }
+
+      // Allow letters and numbers only
+      const pattern = /^[A-Z0-9]+$/;
+      if (!pattern.test(truckNumber)) {
+        throw new Error('Truck number can only contain letters and numbers');
+      }
+
       return true;
     }),
+  body('truckName')
+    .optional()
+    .notEmpty()
+    .withMessage('Truck name is required')
+    .isLength({ max: 20 })
+    .withMessage('Truck name cannot exceed 20 characters')
+    .matches(/^[A-Za-z\s]+$/)
+    .withMessage('Truck name can only contain alphabets and spaces'),
   body('entryType')
     .optional()
     .isIn(['Sales', 'Raw Stone'])
@@ -104,13 +129,27 @@ const createTruckEntry = asyncHandler(async (req, res) => {
   const { organizationId, id: userId } = req.user;
   const {
     truckNumber,
+    truckName,
     entryType,
     materialType,
     units,
     ratePerUnit,
     entryDate,
+    entryTime,
     notes,
   } = req.body;
+
+  console.log('🕐 Debug - Backend received entryTime:', entryTime);
+  console.log(
+    '📥 Debug - Backend received request body:',
+    JSON.stringify(req.body, null, 2),
+  );
+  console.log('🚛 Debug - Truck number received:', truckNumber);
+  console.log('🚛 Debug - Truck name received:', truckName);
+  console.log('📝 Debug - Entry type received:', entryType);
+  console.log('📦 Debug - Material type received:', materialType);
+  console.log('⚖️ Debug - Units received:', units);
+  console.log('💰 Debug - Rate per unit received:', ratePerUnit);
 
   let truckImage = null;
   if (req.file) {
@@ -118,22 +157,43 @@ const createTruckEntry = asyncHandler(async (req, res) => {
   }
 
   // Basic validation
-  if (!truckNumber || !entryType || !units || !ratePerUnit) {
+  if (!truckNumber || !truckName || !entryType || !units || !ratePerUnit) {
+    console.log('❌ Validation failed - Missing required fields');
+    console.log('  - truckNumber:', !!truckNumber);
+    console.log('  - truckName:', !!truckName);
+    console.log('  - entryType:', !!entryType);
+    console.log('  - units:', !!units);
+    console.log('  - ratePerUnit:', !!ratePerUnit);
     throw new AppError('Missing required fields', 400, 'VALIDATION_ERROR');
+  }
+
+  // Auto-generate entry time in IST if not provided
+  let finalEntryTime = entryTime;
+  if (!entryTime) {
+    const now = new Date();
+    const istTime = new Date(
+      now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }),
+    );
+    finalEntryTime = istTime.toTimeString().slice(0, 5); // HH:MM format in IST
+    console.log('🕐 Debug - Auto-generated entry time:', finalEntryTime);
   }
 
   const newEntry = await TruckEntry.create({
     organization: organizationId,
     userId,
-    truckNumber,
+    truckNumber: truckNumber.toString().toUpperCase().replace(/\s/g, ''), // Always uppercase
+    truckName,
     entryType,
     materialType,
     units,
     ratePerUnit,
     entryDate,
+    entryTime: finalEntryTime, // Use auto-generated time
     truckImage,
     notes,
   });
+
+  console.log('✅ Debug - Created entry with entryTime:', newEntry.entryTime);
 
   res.status(201).json({
     success: true,
@@ -261,20 +321,24 @@ const updateTruckEntry = asyncHandler(async (req, res) => {
   // Update fields
   const {
     truckNumber,
+    truckName,
     entryType,
     materialType,
     units,
     ratePerUnit,
     entryDate,
+    entryTime,
     notes,
   } = req.body;
 
   if (truckNumber) entry.truckNumber = truckNumber;
+  if (truckName) entry.truckName = truckName;
   if (entryType) entry.entryType = entryType;
   if (materialType) entry.materialType = materialType;
   if (units) entry.units = units;
   if (ratePerUnit) entry.ratePerUnit = ratePerUnit;
   if (entryDate) entry.entryDate = entryDate;
+  if (entryTime) entry.entryTime = entryTime;
   if (notes) entry.notes = notes;
 
   if (req.file) {

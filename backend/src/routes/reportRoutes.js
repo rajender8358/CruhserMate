@@ -5,15 +5,17 @@ const {
   generateExportData,
   getReportTemplates,
   downloadExportedFile,
+  generateDownloadableReport,
 } = require('../controllers/reportController');
 const { authenticateToken } = require('../middleware/auth');
 
-// Apply auth middleware individually to secure routes
-router.get('/templates', authenticateToken, getReportTemplates);
+// Report routes (protected)
 router.get('/data', authenticateToken, getReportData);
 router.post('/export', authenticateToken, generateExportData);
+router.get('/templates', authenticateToken, getReportTemplates);
+router.get('/download/:fileId', authenticateToken, downloadExportedFile);
 
-// This route is public but secured by a one-time token
-router.get('/download/:fileId', downloadExportedFile);
+// Download routes
+router.post('/download', authenticateToken, generateDownloadableReport);
 
 module.exports = router;

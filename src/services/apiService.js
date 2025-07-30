@@ -5,21 +5,17 @@ import { Platform } from 'react-native';
 const PRODUCTION_URL = 'https://crushermate-backend.vercel.app/api';
 
 // Development URLs
-const DEV_URL = __DEV__ ? 'http://localhost:3000/api' : PRODUCTION_URL;
+const DEV_URL = __DEV__ ? 'http://192.168.29.242:3000/api' : PRODUCTION_URL;
 
 // For physical device testing in development, use your computer's IP address
-// Replace 192.168.1.100 with your actual computer's IP address
+// Replace 192.168.29.242 with your actual computer's IP address
 const DEV_PHYSICAL_URL = 'http://192.168.29.242:3000/api';
 
-// For simulator testing, use localhost
-// const SIMULATOR_URL = 'http://localhost:3000/api';
+// Use computer's IP for development, production URL for production builds
+let API_BASE_URL = __DEV__ ? DEV_URL : PRODUCTION_URL;
 
-// Use localhost for simulator, production URL for production builds
-let API_BASE_URL = PRODUCTION_URL;
-
-// For physical device testing in development, uncomment the line below
-// and replace with your computer's IP address
-// API_BASE_URL = __DEV__ ? DEV_PHYSICAL_URL : PRODUCTION_URL;
+console.log('🌐 API Service - Using URL:', API_BASE_URL);
+console.log('🔧 Development mode:', __DEV__);
 
 export { API_BASE_URL };
 
@@ -377,14 +373,12 @@ class ApiService {
 
   // Report APIs
   async getReportData(filters) {
-    return this.request('/reports/data', {
-      method: 'POST',
-      body: JSON.stringify(filters),
-    });
+    const queryParams = new URLSearchParams(filters).toString();
+    return this.request(`/reports/data?${queryParams}`);
   }
 
-  async generateExportData(exportOptions) {
-    return this.request('/reports/export', {
+  async generateDownloadableReport(exportOptions) {
+    return this.request('/reports/download', {
       method: 'POST',
       body: JSON.stringify(exportOptions),
     });
@@ -433,6 +427,28 @@ class ApiService {
     return this.request(
       `/material-rates/history?materialType=${materialType}&limit=${limit}`,
     );
+  }
+
+  // OCR APIs
+  async extractTruckNumberFromImage(imageFile) {
+    const formData = new FormData();
+    formData.append('image', {
+      uri: imageFile.uri,
+      type: 'image/jpeg',
+      name: 'truck-image.jpg',
+    });
+
+    return this.request('/ocr/extract-truck-number', {
+      method: 'POST',
+      body: formData,
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  }
+
+  async ocrHealth() {
+    return this.request('/ocr/health');
   }
 
   // User Profile APIs
