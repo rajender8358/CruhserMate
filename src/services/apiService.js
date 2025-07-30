@@ -407,11 +407,18 @@ class ApiService {
 
     console.log('🔍 PDF Export - Success, filename:', filename);
 
-    // For React Native, return the direct URL to open in browser
+    // For React Native, return the direct URL to open in browser with query parameters
+    const queryParams = new URLSearchParams({
+      startDate: exportOptions.startDate,
+      endDate: exportOptions.endDate,
+      format: exportOptions.format || 'pdf',
+      organizationId: exportOptions.organizationId || '',
+    }).toString();
+
     return {
       success: true,
       data: {
-        downloadUrl: `${API_BASE_URL}/reports/export`,
+        downloadUrl: `${API_BASE_URL}/reports/export?${queryParams}`,
         fileName: filename,
         entriesCount: 0,
         summary: {

@@ -11,5 +11,6 @@ const { authenticateToken } = require('../middleware/auth');
 router.get('/templates', authenticateToken, getReportTemplates);
 router.get('/data', authenticateToken, getReportData);
 router.post('/export', generateExportData); // Remove auth for PDF download
+router.get('/export', generateExportData); // GET route for browser download
 
 module.exports = router;

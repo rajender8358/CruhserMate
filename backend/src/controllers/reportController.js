@@ -235,7 +235,13 @@ const getReportData = asyncHandler(async (req, res) => {
 // @access  Public (no authentication required)
 const generateExportData = asyncHandler(async (req, res) => {
   try {
-    const { startDate, endDate, format = 'csv', organizationId } = req.body;
+    // Handle both POST (body) and GET (query) requests
+    const {
+      startDate,
+      endDate,
+      format = 'csv',
+      organizationId,
+    } = req.method === 'POST' ? req.body : req.query;
 
     if (!startDate || !endDate) {
       throw new AppError('Start date and end date are required', 400);
