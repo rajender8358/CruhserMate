@@ -378,10 +378,39 @@ class ApiService {
   }
 
   async generateDownloadableReport(exportOptions) {
-    return this.request('/reports/export', {
+    const token = await AsyncStorage.getItem('userToken');
+    const response = await fetch(`${API_BASE_URL}/reports/export`, {
       method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
       body: JSON.stringify(exportOptions),
     });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(
+        errorData.message || `HTTP error! status: ${response.status}`,
+      );
+    }
+
+    // Get the filename from the Content-Disposition header
+    const contentDisposition = response.headers.get('Content-Disposition');
+    const filename = contentDisposition
+      ? contentDisposition.split('filename=')[1]?.replace(/"/g, '')
+      : `CrusherMate_Report_${new Date().toISOString().split('T')[0]}.pdf`;
+
+    // For React Native, return the direct URL to open in browser
+    return {
+      success: true,
+      data: {
+        downloadUrl: `${API_BASE_URL}/reports/export`,
+        fileName: filename,
+        entriesCount: 0,
+        summary: {},
+      },
+    };
   }
 
   async getReportTemplates() {

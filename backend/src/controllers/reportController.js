@@ -2,7 +2,7 @@ const TruckEntry = require('../models/TruckEntry');
 const User = require('../models/User');
 const MaterialRate = require('../models/MaterialRate');
 const { asyncHandler, AppError } = require('../middleware/errorHandler');
-const { generatePdf, generateCsv } = require('../utils/exportGenerator');
+const { generatePdf } = require('../utils/exportGenerator');
 const path = require('path');
 const fs = require('fs-extra');
 const { v4: uuidv4 } = require('uuid');
@@ -280,26 +280,20 @@ const generateExportData = asyncHandler(async (req, res) => {
       })),
     };
 
-    let fileId;
-    if (format === 'pdf') {
-      fileId = await generatePdf(exportData);
-    } else {
-      fileId = await generateCsv(exportData);
+    // Only support PDF format
+    if (format !== 'pdf') {
+      throw new AppError('Only PDF format is supported', 400, 'INVALID_FORMAT');
     }
 
-    const token = uuidv4();
-    downloadTokens.set(token, fileId);
+    const pdfBuffer = await generatePdf(exportData);
+    const fileName = `CrusherMate_Report_${
+      new Date().toISOString().split('T')[0]
+    }.pdf`;
 
-    // Token expires in 1 minute
-    setTimeout(() => {
-      downloadTokens.delete(token);
-    }, 60000);
-
-    res.json({
-      success: true,
-      message: `Export data generated successfully in ${format.toUpperCase()} format`,
-      data: { token, fileId },
-    });
+    // Return PDF directly
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.send(pdfBuffer);
   } catch (error) {
     console.error('--- EXPORT ERROR ---', error);
     res.status(500).json({
@@ -307,32 +301,6 @@ const generateExportData = asyncHandler(async (req, res) => {
       message: 'Failed to export data.',
       error: error.message,
     });
-  }
-});
-
-const downloadExportedFile = asyncHandler(async (req, res) => {
-  const { fileId } = req.params;
-  const { token } = req.query;
-  const expectedFileId = downloadTokens.get(token);
-
-  if (!expectedFileId || expectedFileId !== fileId) {
-    throw new AppError('Invalid or expired download link', 403, 'FORBIDDEN');
-  }
-
-  // Invalidate the token
-  downloadTokens.delete(token);
-
-  const filePath = path.join(TEMP_DIR, fileId);
-
-  if (await fs.pathExists(filePath)) {
-    res.download(filePath, err => {
-      if (err) {
-        console.error('Error downloading file:', err);
-      }
-      fs.remove(filePath);
-    });
-  } else {
-    throw new AppError('File not found', 404, 'NOT_FOUND');
   }
 });
 
@@ -401,5 +369,4 @@ module.exports = {
   getReportData,
   generateExportData,
   getReportTemplates,
-  downloadExportedFile,
 };

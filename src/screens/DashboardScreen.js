@@ -17,7 +17,7 @@ import { API_BASE_URL } from '../services/apiService';
 import theme from '../assets/theme';
 import apiService from '../services/apiService';
 import { formatCurrency } from '../utils/formatting';
-import { exportToPDF, exportToCSV } from '../utils/exportUtils';
+import { exportToPDF } from '../utils/exportUtils';
 import { APP_ROUTES } from '../navigations/Routes';
 
 const DashboardScreen = () => {

@@ -21,9 +21,10 @@ const formatTime = timeString => {
 const generatePdf = data => {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ margin: 30, size: 'A4' });
-    const filePath = path.join(TEMP_DIR, `${uuidv4()}.pdf`);
-    const stream = fs.createWriteStream(filePath);
-    doc.pipe(stream);
+    const chunks = [];
+
+    doc.on('data', chunk => chunks.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
 
     // Title
     doc.fontSize(20).text(data.reportInfo.title, { align: 'center' });
@@ -68,28 +69,9 @@ const generatePdf = data => {
     });
 
     doc.end();
-    stream.on('finish', () => resolve(path.basename(filePath)));
-    stream.on('error', reject);
   });
-};
-
-const generateCsv = data => {
-  const fields = [
-    'date',
-    'truckNumber',
-    'entryType',
-    'materialType',
-    'units',
-    'ratePerUnit',
-    'totalAmount',
-  ];
-  const json2csvParser = new Parser({ fields });
-  const csv = json2csvParser.parse(data.entries);
-  const filePath = path.join(TEMP_DIR, `${uuidv4()}.csv`);
-  return fs.writeFile(filePath, csv).then(() => path.basename(filePath));
 };
 
 module.exports = {
   generatePdf,
-  generateCsv,
 };
