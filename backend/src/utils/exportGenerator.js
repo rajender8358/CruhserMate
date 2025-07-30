@@ -21,7 +21,7 @@ const formatTime = timeString => {
 const generatePdf = data => {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
-      margin: 40,
+      margin: 30,
       size: 'A4',
       info: {
         Title: 'CrusherMate Financial Report',
@@ -35,30 +35,59 @@ const generatePdf = data => {
     doc.on('data', chunk => chunks.push(chunk));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
 
-    // Header with logo and company info
-    const headerY = 40;
-    doc.rect(0, 0, 595, 80).fill('#1e40af'); // Blue header background
-    doc.fillColor('white');
-    doc.fontSize(24).font('Helvetica-Bold').text('CrusherMate', 40, headerY);
+    // Theme colors from your app
+    const colors = {
+      primary: '#2C3E50', // Dark blue-gray
+      secondary: '#3498DB', // Modern blue
+      accent: '#E74C3C', // Modern red
+      white: '#FFFFFF',
+      black: '#000000',
+      gray: '#BDC3C7', // Light gray
+      lightGray: '#ECF0F1', // Very light gray
+      darkGray: '#7F8C8D', // Medium gray
+      background: '#F8F9FA', // Light background
+    };
+
+    // Header with proper alignment
+    const headerY = 30;
+    const pageWidth = 595;
+    const margin = 30;
+    const contentWidth = pageWidth - margin * 2;
+
+    // Blue header background
+    doc.rect(0, 0, pageWidth, 70).fill(colors.secondary);
+    doc.fillColor(colors.white);
+
+    // Company name - centered
     doc
-      .fontSize(12)
+      .fontSize(28)
+      .font('Helvetica-Bold')
+      .text('CrusherMate', margin, headerY, { align: 'left' });
+    doc
+      .fontSize(14)
       .font('Helvetica')
-      .text('Financial Report', 40, headerY + 30);
+      .text('Financial Report', margin, headerY + 35, { align: 'left' });
+
+    // Generation date - right aligned
     doc
       .fontSize(10)
       .text(
         `Generated: ${new Date().toLocaleDateString('en-IN')}`,
-        40,
-        headerY + 45,
+        margin,
+        headerY + 50,
+        { align: 'left' },
       );
 
     // Reset colors
-    doc.fillColor('black');
-    doc.strokeColor('black');
+    doc.fillColor(colors.black);
+    doc.strokeColor(colors.black);
 
-    // Report period
+    // Report period section
     const periodY = 120;
-    doc.fontSize(14).font('Helvetica-Bold').text('Report Period', 40, periodY);
+    doc
+      .fontSize(16)
+      .font('Helvetica-Bold')
+      .text('Report Period', margin, periodY);
     doc
       .fontSize(12)
       .font('Helvetica')
@@ -66,170 +95,192 @@ const generatePdf = data => {
         `${formatDate(data.reportInfo.dateRange.startDate)} - ${formatDate(
           data.reportInfo.dateRange.endDate,
         )}`,
-        40,
-        periodY + 20,
+        margin,
+        periodY + 25,
       );
 
-    // Financial Summary Section
+    // Financial Summary Section with proper alignment
     const summaryY = 180;
-    doc.rect(40, summaryY - 10, 515, 80).stroke('#e5e7eb');
+    const summaryWidth = contentWidth;
+    const summaryHeight = 90;
+
+    // Summary box with border
     doc
-      .fillColor('#f8fafc')
-      .rect(40, summaryY - 10, 515, 80)
+      .rect(margin, summaryY - 10, summaryWidth, summaryHeight)
+      .stroke(colors.gray);
+    doc
+      .fillColor(colors.lightGray)
+      .rect(margin, summaryY - 10, summaryWidth, summaryHeight)
       .fill();
-    doc.fillColor('black');
+    doc.fillColor(colors.black);
 
+    // Summary title
     doc
-      .fontSize(16)
+      .fontSize(18)
       .font('Helvetica-Bold')
-      .text('Financial Summary', 50, summaryY);
+      .text('Financial Summary', margin + 15, summaryY);
 
-    const summaryCol1 = 50;
-    const summaryCol2 = 200;
-    const summaryCol3 = 350;
+    // Summary metrics in a grid layout
+    const col1X = margin + 15;
+    const col2X = margin + 200;
+    const row1Y = summaryY + 30;
+    const row2Y = summaryY + 55;
 
-    // Summary metrics
-    doc
-      .fontSize(12)
-      .font('Helvetica-Bold')
-      .text('Total Sales:', summaryCol1, summaryY + 25);
+    // Row 1
+    doc.fontSize(12).font('Helvetica-Bold').text('Total Sales:', col1X, row1Y);
     doc
       .fontSize(12)
       .font('Helvetica')
-      .text(
-        formatCurrency(data.summary.totalSales),
-        summaryCol1 + 80,
-        summaryY + 25,
-      );
+      .text(formatCurrency(data.summary.totalSales), col1X + 100, row1Y);
+
+    doc.fontSize(12).font('Helvetica-Bold').text('Net Profit:', col2X, row1Y);
+    doc
+      .fontSize(12)
+      .font('Helvetica')
+      .text(formatCurrency(data.summary.netIncome), col2X + 100, row1Y);
+
+    // Row 2
+    doc
+      .fontSize(12)
+      .font('Helvetica-Bold')
+      .text('Raw Stone Cost:', col1X, row2Y);
+    doc
+      .fontSize(12)
+      .font('Helvetica')
+      .text(formatCurrency(data.summary.totalRawStone), col1X + 120, row2Y);
 
     doc
       .fontSize(12)
       .font('Helvetica-Bold')
-      .text('Raw Stone Cost:', summaryCol1, summaryY + 45);
+      .text('Total Entries:', col2X, row2Y);
     doc
       .fontSize(12)
       .font('Helvetica')
-      .text(
-        formatCurrency(data.summary.totalRawStone),
-        summaryCol1 + 100,
-        summaryY + 45,
-      );
+      .text(data.summary.totalEntries.toString(), col2X + 100, row2Y);
 
-    doc
-      .fontSize(12)
-      .font('Helvetica-Bold')
-      .text('Net Profit:', summaryCol1, summaryCol2);
-    doc
-      .fontSize(12)
-      .font('Helvetica')
-      .text(
-        formatCurrency(data.summary.netIncome),
-        summaryCol1 + 80,
-        summaryCol2,
-      );
-
-    doc
-      .fontSize(12)
-      .font('Helvetica-Bold')
-      .text('Total Entries:', summaryCol1, summaryCol2 + 20);
-    doc
-      .fontSize(12)
-      .font('Helvetica')
-      .text(
-        data.summary.totalEntries.toString(),
-        summaryCol1 + 90,
-        summaryCol2 + 20,
-      );
-
-    // Detailed Entries Section
+    // Transaction Details Section
     const entriesY = 300;
     doc
-      .fontSize(16)
+      .fontSize(18)
       .font('Helvetica-Bold')
-      .text('Transaction Details', 40, entriesY);
+      .text('Transaction Details', margin, entriesY);
 
-    // Table header
-    const tableY = entriesY + 20;
-    const col1 = 40; // Date
-    const col2 = 120; // Time
-    const col3 = 180; // Truck No
-    const col4 = 280; // Type
-    const col5 = 350; // Material
-    const col6 = 420; // Units
-    const col7 = 480; // Amount
+    // Table with proper column widths
+    const tableY = entriesY + 25;
+    const tableWidth = contentWidth;
+    const colWidths = [80, 60, 100, 70, 80, 50, 80]; // Date, Time, Truck, Type, Material, Units, Amount
+    const colNames = [
+      'Date',
+      'Time',
+      'Truck No.',
+      'Type',
+      'Material',
+      'Units',
+      'Amount',
+    ];
 
-    // Header background
+    let currentX = margin;
+
+    // Table header with theme color
     doc
-      .fillColor('#1e40af')
-      .rect(col1, tableY - 5, 500, 25)
+      .fillColor(colors.primary)
+      .rect(margin, tableY - 5, tableWidth, 25)
       .fill();
-    doc.fillColor('white');
-    doc.fontSize(10).font('Helvetica-Bold').text('Date', col1, tableY);
-    doc.text('Time', col2, tableY);
-    doc.text('Truck No.', col3, tableY);
-    doc.text('Type', col4, tableY);
-    doc.text('Material', col5, tableY);
-    doc.text('Units', col6, tableY);
-    doc.text('Amount', col7, tableY);
+    doc.fillColor(colors.white);
+    doc.fontSize(10).font('Helvetica-Bold');
+
+    // Header text
+    colNames.forEach((colName, index) => {
+      doc.text(colName, currentX + 5, tableY);
+      currentX += colWidths[index];
+    });
 
     // Reset colors
-    doc.fillColor('black');
-    doc.strokeColor('#e5e7eb');
+    doc.fillColor(colors.black);
+    doc.strokeColor(colors.gray);
 
-    // Table rows
+    // Table rows with proper alignment
     let currentY = tableY + 30;
     data.entries.forEach((entry, index) => {
       // Alternate row colors
       if (index % 2 === 0) {
         doc
-          .fillColor('#f8fafc')
-          .rect(col1, currentY - 5, 500, 20)
+          .fillColor(colors.lightGray)
+          .rect(margin, currentY - 5, tableWidth, 20)
           .fill();
       } else {
         doc
-          .fillColor('white')
-          .rect(col1, currentY - 5, 500, 20)
+          .fillColor(colors.white)
+          .rect(margin, currentY - 5, tableWidth, 20)
           .fill();
       }
-      doc.fillColor('black');
+      doc.fillColor(colors.black);
 
-      // Row content
+      // Row content with proper column alignment
+      currentX = margin;
+
+      // Date
       doc
         .fontSize(9)
         .font('Helvetica')
-        .text(formatDate(entry.date), col1, currentY);
-      doc.text(formatTime(entry.time), col2, currentY);
-      doc.text(entry.truckNumber, col3, currentY);
-      doc.text(entry.entryType, col4, currentY);
-      doc.text(entry.materialType || 'N/A', col5, currentY);
-      doc.text(entry.units.toString(), col6, currentY);
+        .text(formatDate(entry.date), currentX + 5, currentY);
+      currentX += colWidths[0];
+
+      // Time
+      doc.text(formatTime(entry.time), currentX + 5, currentY);
+      currentX += colWidths[1];
+
+      // Truck Number
+      doc.text(entry.truckNumber, currentX + 5, currentY);
+      currentX += colWidths[2];
+
+      // Type
+      doc.text(entry.entryType, currentX + 5, currentY);
+      currentX += colWidths[3];
+
+      // Material
+      doc.text(entry.materialType || 'N/A', currentX + 5, currentY);
+      currentX += colWidths[4];
+
+      // Units
+      doc.text(entry.units.toString(), currentX + 5, currentY);
+      currentX += colWidths[5];
+
+      // Amount (right aligned)
       doc
         .font('Helvetica-Bold')
-        .text(formatCurrency(entry.totalAmount), col7, currentY);
+        .text(
+          formatCurrency(entry.totalAmount),
+          currentX + colWidths[6] - 10,
+          currentY,
+          { align: 'right' },
+        );
       doc.font('Helvetica');
 
       currentY += 25;
     });
 
     // Table border
-    doc.strokeColor('#d1d5db').lineWidth(1);
-    doc.rect(col1, tableY - 5, 500, currentY - tableY + 5).stroke();
+    doc.strokeColor(colors.gray).lineWidth(1);
+    doc.rect(margin, tableY - 5, tableWidth, currentY - tableY + 5).stroke();
 
-    // Footer
-    const footerY = 750;
-    doc.fillColor('#6b7280');
+    // Footer with proper alignment
+    const footerY = 780;
+    doc.fillColor(colors.darkGray);
     doc
       .fontSize(10)
       .font('Helvetica')
-      .text('Generated by CrusherMate System', 40, footerY);
+      .text('Generated by CrusherMate System', margin, footerY);
     doc.text(
       'This is an automated report. For questions, contact your administrator.',
-      40,
+      margin,
       footerY + 15,
     );
 
-    // Page number
-    doc.text(`Page 1 of 1`, 500, footerY, { align: 'right' });
+    // Page number - right aligned
+    doc.text(`Page 1 of 1`, margin + contentWidth - 50, footerY, {
+      align: 'right',
+    });
 
     doc.end();
   });
