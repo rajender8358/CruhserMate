@@ -62,7 +62,7 @@ const TrackScreen = ({ navigation }) => {
           setUserDetails({
             name: user.username || 'User',
             role: user.role === 'user' ? 'User' : 'Owner',
-            company: 'CrusherMate Operations',
+            company: user.organizationName || 'CrusherMate Operations',
           });
         }
       }
@@ -73,7 +73,7 @@ const TrackScreen = ({ navigation }) => {
       setUserDetails({
         name: 'User',
         role: 'User',
-        company: 'CrusherMate Operations',
+        company: 'Unknown Organization',
       });
     }
   };
