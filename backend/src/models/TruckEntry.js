@@ -15,22 +15,12 @@ const truckEntrySchema = new mongoose.Schema(
     },
     truckNumber: {
       type: String,
-      required: true,
+      required: [true, 'Truck number is required'],
       trim: true,
       uppercase: true,
       match: [
-        /^[A-Z0-9]{5,15}$/,
-        'Please enter a valid truck number (5-15 alphanumeric characters)',
-      ],
-    },
-    truckName: {
-      type: String,
-      required: true,
-      trim: true,
-      maxlength: [20, 'Truck name cannot exceed 20 characters'],
-      match: [
-        /^[A-Za-z\s]+$/,
-        'Truck name can only contain alphabets and spaces',
+        /^[A-Z]{2}[0-9]{2}[A-Z]{1,2}[0-9]{4}$/,
+        'Please enter a valid truck number format (e.g., KA01AB1234)',
       ],
     },
     entryType: {
@@ -84,16 +74,8 @@ const truckEntrySchema = new mongoose.Schema(
       type: String,
       required: false, // Not required from frontend
       default: function () {
-        // Only set default if entryTime is not provided
-        if (this.entryTime) return this.entryTime;
-
-        // Always use IST timezone for consistency
         const now = new Date();
-        // Get current time in IST (UTC+5:30)
-        const istTime = new Date(
-          now.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }),
-        );
-        return istTime.toTimeString().slice(0, 5); // "HH:MM" in IST
+        return now.toTimeString().slice(0, 5); // "HH:MM"
       },
       match: [
         /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/,
