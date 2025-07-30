@@ -3,6 +3,7 @@ const User = require('../models/User');
 const MaterialRate = require('../models/MaterialRate');
 const { asyncHandler, AppError } = require('../middleware/errorHandler');
 const { generatePdf } = require('../utils/exportGenerator');
+const jwt = require('jsonwebtoken');
 const path = require('path');
 const fs = require('fs-extra');
 const { v4: uuidv4 } = require('uuid');
@@ -231,10 +232,22 @@ const getReportData = asyncHandler(async (req, res) => {
 
 // @desc    Generate export data
 // @route   POST /api/reports/export
-// @access  Private
+// @access  Public (with token in body)
 const generateExportData = asyncHandler(async (req, res) => {
   try {
-    const { startDate, endDate, format = 'csv' } = req.body;
+    const { startDate, endDate, format = 'csv', token } = req.body;
+
+    // Verify token manually
+    if (!token) {
+      throw new AppError('Authentication token required', 401, 'UNAUTHORIZED');
+    }
+
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      req.user = decoded.user;
+    } catch (jwtError) {
+      throw new AppError('Invalid or expired token', 401, 'UNAUTHORIZED');
+    }
 
     if (!startDate || !endDate) {
       throw new AppError('Start date and end date are required', 400);

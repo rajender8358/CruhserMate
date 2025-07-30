@@ -10,6 +10,6 @@ const { authenticateToken } = require('../middleware/auth');
 // Apply auth middleware individually to secure routes
 router.get('/templates', authenticateToken, getReportTemplates);
 router.get('/data', authenticateToken, getReportData);
-router.post('/export', authenticateToken, generateExportData);
+router.post('/export', generateExportData); // Remove auth for PDF download
 
 module.exports = router;

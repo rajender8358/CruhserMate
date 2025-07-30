@@ -383,9 +383,11 @@ class ApiService {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify(exportOptions),
+      body: JSON.stringify({
+        ...exportOptions,
+        token: token,
+      }),
     });
 
     if (!response.ok) {
