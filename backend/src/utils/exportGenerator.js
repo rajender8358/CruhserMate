@@ -21,13 +21,13 @@ const formatTime = timeString => {
 const generatePdf = data => {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
-      margin: 30,
+      margin: 20,
       size: 'A4',
       info: {
-        Title: 'CrusherMate Financial Report',
+        Title: 'CrusherMate Financial Statement',
         Author: 'CrusherMate System',
-        Subject: 'Truck Entry Report',
-        Keywords: 'crusher, truck, financial, report',
+        Subject: 'Truck Entry Statement',
+        Keywords: 'crusher, truck, financial, statement',
       },
     });
     const chunks = [];
@@ -35,59 +35,37 @@ const generatePdf = data => {
     doc.on('data', chunk => chunks.push(chunk));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
 
-    // Theme colors from your app
+    // Simple colors for bank statement style
     const colors = {
-      primary: '#2C3E50', // Dark blue-gray
-      secondary: '#3498DB', // Modern blue
-      accent: '#E74C3C', // Modern red
+      header: '#2C3E50',
       white: '#FFFFFF',
       black: '#000000',
-      gray: '#BDC3C7', // Light gray
-      lightGray: '#ECF0F1', // Very light gray
-      darkGray: '#7F8C8D', // Medium gray
-      background: '#F8F9FA', // Light background
+      gray: '#95A5A6',
+      lightGray: '#ECF0F1',
+      border: '#BDC3C7',
     };
 
-    // Header with proper alignment
-    const headerY = 30;
+    // Full page dimensions
     const pageWidth = 595;
-    const margin = 30;
+    const pageHeight = 842;
+    const margin = 20;
     const contentWidth = pageWidth - margin * 2;
 
-    // Blue header background
-    doc.rect(0, 0, pageWidth, 70).fill(colors.secondary);
+    // 1. HEADER - Simple bank statement style
+    doc.rect(0, 0, pageWidth, 60).fill(colors.header);
     doc.fillColor(colors.white);
-
-    // Company name - centered
-    doc
-      .fontSize(28)
-      .font('Helvetica-Bold')
-      .text('CrusherMate', margin, headerY, { align: 'left' });
-    doc
-      .fontSize(14)
-      .font('Helvetica')
-      .text('Financial Report', margin, headerY + 35, { align: 'left' });
-
-    // Generation date - right aligned
-    doc
-      .fontSize(10)
-      .text(
-        `Generated: ${new Date().toLocaleDateString('en-IN')}`,
-        margin,
-        headerY + 50,
-        { align: 'left' },
-      );
+    doc.fontSize(24).font('Helvetica-Bold').text('CrusherMate', margin, 15);
+    doc.fontSize(12).font('Helvetica').text('Financial Statement', margin, 45);
 
     // Reset colors
     doc.fillColor(colors.black);
-    doc.strokeColor(colors.black);
 
-    // Report period section
-    const periodY = 120;
+    // 2. REPORT INFO - Simple layout
+    const infoY = 80;
     doc
-      .fontSize(16)
+      .fontSize(14)
       .font('Helvetica-Bold')
-      .text('Report Period', margin, periodY);
+      .text('Statement Period:', margin, infoY);
     doc
       .fontSize(12)
       .font('Helvetica')
@@ -96,80 +74,57 @@ const generatePdf = data => {
           data.reportInfo.dateRange.endDate,
         )}`,
         margin,
-        periodY + 25,
+        infoY + 20,
+      );
+    doc
+      .fontSize(10)
+      .font('Helvetica')
+      .text(
+        `Generated: ${new Date().toLocaleDateString('en-IN')}`,
+        margin,
+        infoY + 35,
       );
 
-    // Financial Summary Section with proper alignment
-    const summaryY = 180;
-    const summaryWidth = contentWidth;
-    const summaryHeight = 90;
-
-    // Summary box with border
+    // 3. SUMMARY SECTION - Simple grid like bank statement
+    const summaryY = 140;
     doc
-      .rect(margin, summaryY - 10, summaryWidth, summaryHeight)
-      .stroke(colors.gray);
-    doc
-      .fillColor(colors.lightGray)
-      .rect(margin, summaryY - 10, summaryWidth, summaryHeight)
-      .fill();
-    doc.fillColor(colors.black);
-
-    // Summary title
-    doc
-      .fontSize(18)
+      .fontSize(16)
       .font('Helvetica-Bold')
-      .text('Financial Summary', margin + 15, summaryY);
+      .text('Account Summary', margin, summaryY);
 
-    // Summary metrics in a grid layout
-    const col1X = margin + 15;
-    const col2X = margin + 200;
-    const row1Y = summaryY + 30;
-    const row2Y = summaryY + 55;
+    // Simple summary table
+    const summaryTableY = summaryY + 25;
+    const summaryCols = [
+      { label: 'Total Sales', value: formatCurrency(data.summary.totalSales) },
+      {
+        label: 'Raw Stone Cost',
+        value: formatCurrency(data.summary.totalRawStone),
+      },
+      { label: 'Net Profit', value: formatCurrency(data.summary.netIncome) },
+      { label: 'Total Entries', value: data.summary.totalEntries.toString() },
+    ];
 
-    // Row 1 - Total Sales and Net Profit with better alignment
-    doc.fontSize(12).font('Helvetica-Bold').text('Total Sales:', col1X, row1Y);
+    summaryCols.forEach((item, index) => {
+      const rowY = summaryTableY + index * 25;
+      doc
+        .fontSize(12)
+        .font('Helvetica-Bold')
+        .text(item.label + ':', margin, rowY);
+      doc
+        .fontSize(12)
+        .font('Helvetica')
+        .text(item.value, margin + 150, rowY);
+    });
+
+    // 4. TRANSACTIONS TABLE - Simple bank statement style
+    const tableY = summaryY + 150;
     doc
-      .fontSize(12)
-      .font('Helvetica')
-      .text(formatCurrency(data.summary.totalSales), col1X + 120, row1Y);
-
-    doc.fontSize(12).font('Helvetica-Bold').text('Net Profit:', col2X, row1Y);
-    doc
-      .fontSize(12)
-      .font('Helvetica')
-      .text(formatCurrency(data.summary.netIncome), col2X + 120, row1Y);
-
-    // Row 2 - Raw Stone Cost and Total Entries with better alignment
-    doc
-      .fontSize(12)
+      .fontSize(16)
       .font('Helvetica-Bold')
-      .text('Raw Stone Cost:', col1X, row2Y);
-    doc
-      .fontSize(12)
-      .font('Helvetica')
-      .text(formatCurrency(data.summary.totalRawStone), col1X + 140, row2Y);
+      .text('Transaction History', margin, tableY);
 
-    doc
-      .fontSize(12)
-      .font('Helvetica-Bold')
-      .text('Total Entries:', col2X, row2Y);
-    doc
-      .fontSize(12)
-      .font('Helvetica')
-      .text(data.summary.totalEntries.toString(), col2X + 120, row2Y);
-
-    // Transaction Details Section
-    const entriesY = 300;
-    doc
-      .fontSize(18)
-      .font('Helvetica-Bold')
-      .text('Transaction Details', margin, entriesY);
-
-    // Table with proper column widths
-    const tableY = entriesY + 25;
-    const tableWidth = contentWidth;
-    const colWidths = [80, 60, 100, 70, 80, 50, 80]; // Date, Time, Truck, Type, Material, Units, Amount
-    const colNames = [
+    // Simple table headers
+    const headers = [
       'Date',
       'Time',
       'Truck No.',
@@ -178,107 +133,77 @@ const generatePdf = data => {
       'Units',
       'Amount',
     ];
+    const colPositions = [
+      margin,
+      margin + 80,
+      margin + 140,
+      margin + 220,
+      margin + 280,
+      margin + 350,
+      margin + 400,
+    ];
 
-    let currentX = margin;
-
-    // Table header with theme color
+    // Header row
     doc
-      .fillColor(colors.primary)
-      .rect(margin, tableY - 5, tableWidth, 25)
+      .fillColor(colors.header)
+      .rect(margin, tableY + 15, contentWidth, 20)
       .fill();
     doc.fillColor(colors.white);
-    doc.fontSize(10).font('Helvetica-Bold');
-
-    // Header text
-    colNames.forEach((colName, index) => {
-      doc.text(colName, currentX + 5, tableY);
-      currentX += colWidths[index];
+    headers.forEach((header, index) => {
+      doc
+        .fontSize(10)
+        .font('Helvetica-Bold')
+        .text(header, colPositions[index], tableY + 20);
     });
 
     // Reset colors
     doc.fillColor(colors.black);
-    doc.strokeColor(colors.gray);
 
-    // Table rows with proper alignment
-    let currentY = tableY + 30;
+    // Data rows
+    let currentY = tableY + 45;
     data.entries.forEach((entry, index) => {
-      // Alternate row colors
+      // Simple alternating background
       if (index % 2 === 0) {
         doc
           .fillColor(colors.lightGray)
-          .rect(margin, currentY - 5, tableWidth, 20)
-          .fill();
-      } else {
-        doc
-          .fillColor(colors.white)
-          .rect(margin, currentY - 5, tableWidth, 20)
+          .rect(margin, currentY - 5, contentWidth, 20)
           .fill();
       }
       doc.fillColor(colors.black);
 
-      // Row content with proper column alignment
-      currentX = margin;
-
-      // Date
+      // Row data
       doc
         .fontSize(9)
         .font('Helvetica')
-        .text(formatDate(entry.date), currentX + 5, currentY);
-      currentX += colWidths[0];
-
-      // Time
-      doc.text(formatTime(entry.time), currentX + 5, currentY);
-      currentX += colWidths[1];
-
-      // Truck Number
-      doc.text(entry.truckNumber, currentX + 5, currentY);
-      currentX += colWidths[2];
-
-      // Type
-      doc.text(entry.entryType, currentX + 5, currentY);
-      currentX += colWidths[3];
-
-      // Material
-      doc.text(entry.materialType || 'N/A', currentX + 5, currentY);
-      currentX += colWidths[4];
-
-      // Units
-      doc.text(entry.units.toString(), currentX + 5, currentY);
-      currentX += colWidths[5];
-
-      // Amount (right aligned with proper spacing)
+        .text(formatDate(entry.date), colPositions[0], currentY);
+      doc.text(formatTime(entry.time), colPositions[1], currentY);
+      doc.text(entry.truckNumber, colPositions[2], currentY);
+      doc.text(entry.entryType, colPositions[3], currentY);
+      doc.text(entry.materialType || 'N/A', colPositions[4], currentY);
+      doc.text(entry.units.toString(), colPositions[5], currentY);
       doc
         .font('Helvetica-Bold')
-        .text(
-          formatCurrency(entry.totalAmount),
-          currentX + colWidths[6] - 15,
-          currentY,
-          { align: 'right' },
-        );
+        .text(formatCurrency(entry.totalAmount), colPositions[6], currentY);
       doc.font('Helvetica');
 
       currentY += 25;
     });
 
-    // Table border
-    doc.strokeColor(colors.gray).lineWidth(1);
-    doc.rect(margin, tableY - 5, tableWidth, currentY - tableY + 5).stroke();
+    // Simple table border
+    doc.strokeColor(colors.border).lineWidth(1);
+    doc
+      .rect(margin, tableY + 15, contentWidth, currentY - tableY - 10)
+      .stroke();
 
-    // Footer with proper alignment
-    const footerY = 780;
-    doc.fillColor(colors.darkGray);
+    // 5. FOOTER - Simple bank statement footer
+    const footerY = pageHeight - 60;
+    doc.fillColor(colors.gray);
     doc
       .fontSize(10)
       .font('Helvetica')
       .text('Generated by CrusherMate System', margin, footerY);
-    doc.text(
-      'This is an automated report. For questions, contact your administrator.',
-      margin,
-      footerY + 15,
-    );
-
-    // Page number - right aligned
-    doc.text(`Page 1 of 1`, margin + contentWidth - 50, footerY, {
+    doc.text('This is an automated financial statement.', margin, footerY + 15);
+    doc.text('Page 1 of 1', margin + contentWidth - 60, footerY, {
       align: 'right',
     });
 
