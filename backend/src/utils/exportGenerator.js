@@ -7,7 +7,7 @@ const { v4: uuidv4 } = require('uuid');
 const TEMP_DIR = path.join(__dirname, '..', 'temp');
 fs.ensureDirSync(TEMP_DIR);
 
-const formatCurrency = amount => `₹${amount.toLocaleString('en-IN')}`;
+const formatCurrency = amount => `Rs. ${amount.toLocaleString('en-IN')}`;
 const formatDate = dateString =>
   new Date(dateString).toLocaleDateString('en-IN');
 const formatTime = timeString => {
@@ -126,20 +126,20 @@ const generatePdf = data => {
     const row1Y = summaryY + 30;
     const row2Y = summaryY + 55;
 
-    // Row 1
+    // Row 1 - Total Sales and Net Profit with better alignment
     doc.fontSize(12).font('Helvetica-Bold').text('Total Sales:', col1X, row1Y);
     doc
       .fontSize(12)
       .font('Helvetica')
-      .text(formatCurrency(data.summary.totalSales), col1X + 100, row1Y);
+      .text(formatCurrency(data.summary.totalSales), col1X + 120, row1Y);
 
     doc.fontSize(12).font('Helvetica-Bold').text('Net Profit:', col2X, row1Y);
     doc
       .fontSize(12)
       .font('Helvetica')
-      .text(formatCurrency(data.summary.netIncome), col2X + 100, row1Y);
+      .text(formatCurrency(data.summary.netIncome), col2X + 120, row1Y);
 
-    // Row 2
+    // Row 2 - Raw Stone Cost and Total Entries with better alignment
     doc
       .fontSize(12)
       .font('Helvetica-Bold')
@@ -147,7 +147,7 @@ const generatePdf = data => {
     doc
       .fontSize(12)
       .font('Helvetica')
-      .text(formatCurrency(data.summary.totalRawStone), col1X + 120, row2Y);
+      .text(formatCurrency(data.summary.totalRawStone), col1X + 140, row2Y);
 
     doc
       .fontSize(12)
@@ -156,7 +156,7 @@ const generatePdf = data => {
     doc
       .fontSize(12)
       .font('Helvetica')
-      .text(data.summary.totalEntries.toString(), col2X + 100, row2Y);
+      .text(data.summary.totalEntries.toString(), col2X + 120, row2Y);
 
     // Transaction Details Section
     const entriesY = 300;
@@ -246,12 +246,12 @@ const generatePdf = data => {
       doc.text(entry.units.toString(), currentX + 5, currentY);
       currentX += colWidths[5];
 
-      // Amount (right aligned)
+      // Amount (right aligned with proper spacing)
       doc
         .font('Helvetica-Bold')
         .text(
           formatCurrency(entry.totalAmount),
-          currentX + colWidths[6] - 10,
+          currentX + colWidths[6] - 15,
           currentY,
           { align: 'right' },
         );
