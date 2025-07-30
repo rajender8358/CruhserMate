@@ -12,7 +12,7 @@ const DEV_URL = __DEV__ ? 'http://192.168.29.242:3000/api' : PRODUCTION_URL;
 const DEV_PHYSICAL_URL = 'http://192.168.29.242:3000/api';
 
 // Use production URL for release builds, development URL for debug builds
-let API_BASE_URL = __DEV__ ? DEV_URL : PRODUCTION_URL;
+let API_BASE_URL = PRODUCTION_URL;
 
 console.log('🌐 API Service - Using URL:', API_BASE_URL);
 console.log('🔧 Development mode:', __DEV__);
@@ -378,7 +378,7 @@ class ApiService {
   }
 
   async generateDownloadableReport(exportOptions) {
-    return this.request('/reports/download', {
+    return this.request('/reports/export', {
       method: 'POST',
       body: JSON.stringify(exportOptions),
     });
