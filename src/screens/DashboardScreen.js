@@ -79,6 +79,7 @@ const DashboardScreen = () => {
         endDate,
         format: type,
         reportType: 'dashboard',
+        organizationId: user?.organization,
       });
 
       if (!response.success) {

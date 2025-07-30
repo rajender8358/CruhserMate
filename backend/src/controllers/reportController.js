@@ -235,7 +235,7 @@ const getReportData = asyncHandler(async (req, res) => {
 // @access  Public (no authentication required)
 const generateExportData = asyncHandler(async (req, res) => {
   try {
-    const { startDate, endDate, format = 'csv' } = req.body;
+    const { startDate, endDate, format = 'csv', organizationId } = req.body;
 
     if (!startDate || !endDate) {
       throw new AppError('Start date and end date are required', 400);
@@ -248,7 +248,11 @@ const generateExportData = asyncHandler(async (req, res) => {
         $lte: new Date(endDate),
       },
     };
-    // No user filtering - get all data for PDF export
+
+    // Filter by organization if provided
+    if (organizationId) {
+      filter.organization = organizationId;
+    }
 
     const entries = await TruckEntry.find(filter)
       .populate('userId', 'username email')
