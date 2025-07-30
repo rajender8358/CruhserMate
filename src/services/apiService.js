@@ -414,7 +414,11 @@ class ApiService {
         downloadUrl: `${API_BASE_URL}/reports/export`,
         fileName: filename,
         entriesCount: 0,
-        summary: {},
+        summary: {
+          totalSales: 0,
+          totalRawStone: 0,
+          netProfit: 0,
+        },
       },
     };
   }

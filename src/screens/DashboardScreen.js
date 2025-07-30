@@ -98,11 +98,15 @@ const DashboardScreen = () => {
         Alert.alert(
           `${type.toUpperCase()} Report Generated`,
           `Your ${type.toUpperCase()} report has been generated with ${entriesCount} entries.\n\n` +
-            `Total Sales: ₹${summary.totalSales.toLocaleString('en-IN')}\n` +
-            `Raw Stone Cost: ₹${summary.totalRawStone.toLocaleString(
+            `Total Sales: ₹${(summary?.totalSales || 0).toLocaleString(
               'en-IN',
             )}\n` +
-            `Net Profit: ₹${summary.netProfit.toLocaleString('en-IN')}\n\n` +
+            `Raw Stone Cost: ₹${(summary?.totalRawStone || 0).toLocaleString(
+              'en-IN',
+            )}\n` +
+            `Net Profit: ₹${(summary?.netProfit || 0).toLocaleString(
+              'en-IN',
+            )}\n\n` +
             `The report has been opened in your browser. You can download it from there.`,
           [{ text: 'OK' }],
         );
