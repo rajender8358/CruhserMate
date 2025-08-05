@@ -27,18 +27,24 @@ export const AuthProvider = ({ children }) => {
   const checkAuthStatus = useCallback(async () => {
     setIsLoading(true);
     try {
+      console.log('🔍 Checking auth status...');
       const parsedUser = await getStoredUser();
       const token = await getStoredToken();
+
+      console.log('📱 Parsed user:', parsedUser);
+      console.log('🔑 Token exists:', !!token);
 
       if (parsedUser && token) {
         await apiService.setToken(token); // Set token for future requests
         setUser(parsedUser);
         setIsAuthenticated(true);
+        console.log('✅ Auth successful');
       } else {
+        console.log('❌ No valid auth data, logging out');
         await logout(); // Clean up if data is missing
       }
     } catch (error) {
-      console.error('Auth check error:', error);
+      console.error('❌ Auth check error:', error);
       await logout(); // Clear state on error
     } finally {
       setIsLoading(false);
