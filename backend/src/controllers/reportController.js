@@ -1,6 +1,7 @@
 const TruckEntry = require('../models/TruckEntry');
 const User = require('../models/User');
 const MaterialRate = require('../models/MaterialRate');
+const OtherExpense = require('../models/OtherExpense');
 const { asyncHandler, AppError } = require('../middleware/errorHandler');
 const { generatePdf } = require('../utils/exportGenerator');
 const jwt = require('jsonwebtoken');
@@ -55,7 +56,7 @@ const getReportData = asyncHandler(async (req, res) => {
 
   filter.entryDate = {
     $gte: new Date(startDate),
-    $lte: new Date(endDate),
+    $lte: new Date(endDate + 'T23:59:59.999Z'),
   };
 
   // Get detailed entries
@@ -232,15 +233,14 @@ const getReportData = asyncHandler(async (req, res) => {
 
 // @desc    Generate export data
 // @route   POST /api/reports/export
-// @access  Public (no authentication required)
+// @access  Private (requires authentication)
 const generateExportData = asyncHandler(async (req, res) => {
   try {
     // Handle both POST (body) and GET (query) requests
     const {
       startDate,
       endDate,
-      format = 'csv',
-      organizationId,
+      format = 'pdf',
     } = req.method === 'POST' ? req.body : req.query;
 
     if (!startDate || !endDate) {
@@ -251,81 +251,444 @@ const generateExportData = asyncHandler(async (req, res) => {
       status: 'active',
       entryDate: {
         $gte: new Date(startDate),
-        $lte: new Date(endDate),
+        $lte: new Date(endDate + 'T23:59:59.999Z'),
       },
     };
 
-    // Filter by organization if provided
-    if (organizationId) {
-      console.log(
-        '🔍 Organization ID received:',
-        organizationId,
-        'Type:',
-        typeof organizationId,
-      );
-
-      // Validate that organizationId is a valid ObjectId
-      const mongoose = require('mongoose');
-      if (!mongoose.Types.ObjectId.isValid(organizationId)) {
-        console.log('❌ Invalid organization ID format:', organizationId);
-        // Instead of throwing error, just skip organization filtering
-        console.log('⚠️ Skipping organization filtering due to invalid ID');
-      } else {
-        console.log('✅ Valid organization ID, applying filter');
-        filter.organization = organizationId;
-      }
+    // Filter by user's organization
+    if (req.user.organizationId) {
+      filter.organization = req.user.organizationId;
+    } else if (req.user.organization) {
+      filter.organization = req.user.organization;
     } else {
-      console.log('⚠️ No organization ID provided, showing all data');
+      throw new AppError('User organization not found', 400);
+    }
+
+    // Role-based filtering
+    if (req.user.role !== 'owner') {
+      filter.userId = req.user.id;
+    }
+
+    // Fetch truck entries
+    const truckEntries = await TruckEntry.find(filter)
+      .populate('userId', 'username email')
+      .sort({ entryDate: -1 });
+
+    // Fetch other expenses with same filter
+    const otherExpensesFilter = {
+      isActive: true,
+      date: {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate + 'T23:59:59.999Z'),
+      },
+    };
+
+    // Filter by user's organization for other expenses
+    if (req.user.organizationId) {
+      otherExpensesFilter.organization = req.user.organizationId;
+    } else if (req.user.organization) {
+      otherExpensesFilter.organization = req.user.organization;
+    }
+
+    // Role-based filtering for other expenses
+    if (req.user.role !== 'owner') {
+      otherExpensesFilter.user = req.user.id;
+    }
+
+    const otherExpenses = await OtherExpense.find(otherExpensesFilter)
+      .populate('user', 'username email')
+      .sort({ date: -1 });
+
+    // Get summary for the filtered data (includes other expenses)
+    const summary = await TruckEntry.getSummaryByDateRange(
+      new Date(startDate),
+      new Date(endDate),
+      filter, // Pass the filter to get summary for the same data
+    );
+
+    // Transform truck entries for export
+    const truckEntriesForExport = truckEntries.map(entry => ({
+      date: entry.entryDate.toISOString().split('T')[0],
+      time: entry.entryTime,
+      truckNumber: entry.truckNumber,
+      entryType: entry.entryType,
+      materialType: entry.materialType || 'N/A',
+      units: entry.units,
+      ratePerUnit: entry.ratePerUnit,
+      totalAmount: entry.totalAmount,
+      type: 'truck_entry',
+    }));
+
+    // Transform other expenses for export
+    const otherExpensesForExport = otherExpenses.map(expense => ({
+      date: expense.date.toISOString().split('T')[0],
+      time: expense.date.toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+      truckNumber: 'N/A',
+      entryType: 'Expense',
+      materialType: expense.expensesName || 'Expense',
+      units: 'N/A',
+      ratePerUnit: 'N/A',
+      totalAmount: expense.amount,
+      description: expense.others || '',
+      type: 'other_expense',
+    }));
+
+    // Combine all entries and sort by date
+    const allEntries = [
+      ...truckEntriesForExport,
+      ...otherExpensesForExport,
+    ].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    console.log('🔍 Export data summary:');
+    console.log('🔍 Truck entries for export:', truckEntriesForExport.length);
+    console.log('🔍 Other expenses for export:', otherExpensesForExport.length);
+    console.log('🔍 Total entries for export:', allEntries.length);
+
+    if (otherExpensesForExport.length > 0) {
+      console.log(
+        '🔍 Sample other expense for export:',
+        otherExpensesForExport[0],
+      );
+    } else {
+      console.log('🔍 No other expenses found for export');
+      console.log('🔍 Other expenses filter used:', otherExpensesFilter);
+      console.log('🔍 User organization:', req.user.organization);
+      console.log('🔍 User organizationId:', req.user.organizationId);
+      console.log('🔍 Date range:', { startDate, endDate });
+
+      // Let's also check what Other Expenses exist in the database
+      const allOtherExpenses = await OtherExpense.find({ isActive: true }).sort(
+        { date: -1 },
+      );
+      console.log(
+        '🔍 Total Other Expenses in database:',
+        allOtherExpenses.length,
+      );
+      if (allOtherExpenses.length > 0) {
+        console.log('🔍 Sample Other Expense from database:', {
+          id: allOtherExpenses[0]._id,
+          expensesName: allOtherExpenses[0].expensesName,
+          amount: allOtherExpenses[0].amount,
+          date: allOtherExpenses[0].date,
+          organization: allOtherExpenses[0].organization,
+        });
+      }
+    }
+
+    const exportData = {
+      reportInfo: {
+        title: `CrusherMate Report (${format.toUpperCase()})`,
+        generatedBy: req.user.username || 'CrusherMate System',
+        organization: req.user.organization,
+        dateRange: { startDate, endDate },
+      },
+      summary,
+      entries: allEntries,
+    };
+
+    if (format === 'pdf') {
+      const pdfBuffer = await generatePdf(exportData);
+      const fileName = `CrusherMate_Report_${
+        new Date().toISOString().split('T')[0]
+      }.pdf`;
+
+      // Return PDF directly
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${fileName}"`,
+      );
+      res.send(pdfBuffer);
+    } else if (format === 'csv') {
+      const { Parser } = require('json2csv');
+
+      // Define CSV fields
+      const fields = [
+        'date',
+        'time',
+        'truckNumber',
+        'entryType',
+        'materialType',
+        'units',
+        'ratePerUnit',
+        'totalAmount',
+        'description',
+        'type',
+      ];
+
+      const parser = new Parser({ fields });
+      const csv = parser.parse(exportData.entries);
+
+      const fileName = `CrusherMate_Report_${
+        new Date().toISOString().split('T')[0]
+      }.csv`;
+
+      // Return CSV directly
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${fileName}"`,
+      );
+      res.send(csv);
+    } else {
+      throw new AppError(
+        'Only PDF and CSV formats are supported',
+        400,
+        'INVALID_FORMAT',
+      );
+    }
+  } catch (error) {
+    console.error('--- EXPORT ERROR ---', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to export data.',
+      error: error.message,
+    });
+  }
+});
+
+// @desc    Generate browser download URL (for PDF/CSV)
+// @route   POST /api/reports/browser-download
+// @access  Private (requires authentication)
+const generateBrowserDownload = asyncHandler(async (req, res) => {
+  try {
+    const { startDate, endDate, format = 'pdf' } = req.body;
+
+    if (!startDate || !endDate) {
+      throw new AppError('Start date and end date are required', 400);
+    }
+
+    console.log('🔍 User object:', req.user);
+    console.log('🔍 User organization:', req.user.organization);
+    console.log('🔍 Organization type:', typeof req.user.organization);
+    console.log('🔍 User organizationId:', req.user.organizationId);
+
+    // Use organizationId directly since it's always available
+    const organizationId = req.user.organizationId;
+
+    if (!organizationId) {
+      console.error('❌ No organization found for user:', req.user);
+      throw new AppError('User organization not found', 400);
+    }
+
+    console.log('🔍 Organization ID for download:', organizationId);
+
+    // Generate a temporary download token
+    const downloadToken = jwt.sign(
+      {
+        userId: req.user.id,
+        organization: organizationId,
+        startDate,
+        endDate,
+        format,
+        type: 'download',
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: '5m' }, // Token expires in 5 minutes
+    );
+
+    // Store the download token
+    downloadTokens.set(downloadToken, {
+      userId: req.user.id,
+      organization: organizationId,
+      startDate,
+      endDate,
+      format,
+      createdAt: new Date(),
+    });
+
+    // Return the download URL
+    const downloadUrl = `${req.protocol}://${req.get(
+      'host',
+    )}/api/reports/download/${downloadToken}`;
+
+    res.json({
+      success: true,
+      data: {
+        downloadUrl,
+        fileName: `CrusherMate_Report_${
+          new Date().toISOString().split('T')[0]
+        }.${format}`,
+      },
+    });
+  } catch (error) {
+    console.error('--- BROWSER DOWNLOAD ERROR ---', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to generate download URL.',
+      error: error.message,
+    });
+  }
+});
+
+// @desc    Download file using temporary token
+// @route   GET /api/reports/download/:token
+// @access  Public (uses temporary token)
+const downloadWithToken = asyncHandler(async (req, res) => {
+  try {
+    const { token } = req.params;
+
+    // Verify the download token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const downloadData = downloadTokens.get(token);
+
+    if (!downloadData || decoded.type !== 'download') {
+      throw new AppError('Invalid or expired download token', 401);
+    }
+
+    // Clean up expired tokens (older than 5 minutes)
+    const now = new Date();
+    for (const [key, data] of downloadTokens.entries()) {
+      if (now - data.createdAt > 5 * 60 * 1000) {
+        downloadTokens.delete(key);
+      }
+    }
+
+    const filter = {
+      status: 'active',
+      entryDate: {
+        $gte: new Date(downloadData.startDate),
+        $lte: new Date(downloadData.endDate + 'T23:59:59.999Z'),
+      },
+      organization: downloadData.organization,
+    };
+
+    // Role-based filtering
+    if (decoded.userId !== downloadData.userId) {
+      filter.userId = downloadData.userId;
     }
 
     const entries = await TruckEntry.find(filter)
       .populate('userId', 'username email')
       .sort({ entryDate: -1 });
 
+    // Fetch other expenses with same filter
+    const otherExpensesFilter = {
+      isActive: true,
+      date: {
+        $gte: new Date(downloadData.startDate),
+        $lte: new Date(downloadData.endDate + 'T23:59:59.999Z'),
+      },
+      organization: downloadData.organization,
+    };
+
+    const otherExpenses = await OtherExpense.find(otherExpensesFilter)
+      .populate('user', 'username email')
+      .sort({ date: -1 });
+
+    console.log('🔍 Found other expenses:', otherExpenses.length);
+
     const summary = await TruckEntry.getSummaryByDateRange(
-      new Date(startDate),
-      new Date(endDate),
-      {}, // No user filtering for PDF export
+      new Date(downloadData.startDate),
+      new Date(downloadData.endDate),
+      filter,
     );
+
+    console.log('🔍 Summary:', summary);
+
+    // Transform truck entries for export
+    const truckEntriesForExport = entries.map(entry => ({
+      date: entry.entryDate.toISOString().split('T')[0],
+      time: entry.entryTime,
+      truckNumber: entry.truckNumber,
+      truckName: entry.truckName || 'N/A',
+      entryType: entry.entryType,
+      materialType: entry.materialType || 'N/A',
+      units: entry.units,
+      ratePerUnit: entry.ratePerUnit,
+      totalAmount: entry.totalAmount,
+    }));
+
+    // Transform other expenses for export
+    const otherExpensesForExport = otherExpenses.map(expense => ({
+      date: expense.date.toISOString().split('T')[0],
+      time: expense.date.toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+      truckNumber: 'N/A',
+      truckName: 'N/A',
+      entryType: 'Expense',
+      materialType: expense.expensesName || 'Expense',
+      units: 'N/A',
+      ratePerUnit: 'N/A',
+      totalAmount: expense.amount,
+    }));
+
+    // Combine all entries and sort by date
+    const allEntries = [
+      ...truckEntriesForExport,
+      ...otherExpensesForExport,
+    ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
     const exportData = {
       reportInfo: {
-        title: `CrusherMate Report (${format.toUpperCase()})`,
+        title: `CrusherMate Report (${downloadData.format.toUpperCase()})`,
         generatedBy: 'CrusherMate System',
-        dateRange: { startDate, endDate },
+        organization: downloadData.organization,
+        dateRange: {
+          startDate: downloadData.startDate,
+          endDate: downloadData.endDate,
+        },
       },
       summary,
-      entries: entries.map(entry => ({
-        date: entry.entryDate.toISOString().split('T')[0],
-        time: entry.entryTime,
-        truckNumber: entry.truckNumber,
-        entryType: entry.entryType,
-        materialType: entry.materialType || 'N/A',
-        units: entry.units,
-        ratePerUnit: entry.ratePerUnit,
-        totalAmount: entry.totalAmount,
-      })),
+      entries: allEntries,
     };
 
-    // Only support PDF format
-    if (format !== 'pdf') {
-      throw new AppError('Only PDF format is supported', 400, 'INVALID_FORMAT');
+    if (downloadData.format === 'pdf') {
+      const pdfBuffer = await generatePdf(exportData);
+      const fileName = `CrusherMate_Report_${
+        new Date().toISOString().split('T')[0]
+      }.pdf`;
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${fileName}"`,
+      );
+      res.send(pdfBuffer);
+    } else if (downloadData.format === 'csv') {
+      const { Parser } = require('json2csv');
+
+      const fields = [
+        'date',
+        'time',
+        'truckNumber',
+        'truckName',
+        'entryType',
+        'materialType',
+        'units',
+        'ratePerUnit',
+        'totalAmount',
+      ];
+
+      const parser = new Parser({ fields });
+      const csv = parser.parse(exportData.entries);
+
+      const fileName = `CrusherMate_Report_${
+        new Date().toISOString().split('T')[0]
+      }.csv`;
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${fileName}"`,
+      );
+      res.send(csv);
+    } else {
+      throw new AppError('Only PDF and CSV formats are supported', 400);
     }
 
-    const pdfBuffer = await generatePdf(exportData);
-    const fileName = `CrusherMate_Report_${
-      new Date().toISOString().split('T')[0]
-    }.pdf`;
-
-    // Return PDF directly
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-    res.send(pdfBuffer);
+    // Clean up the token after successful download
+    downloadTokens.delete(token);
   } catch (error) {
-    console.error('--- EXPORT ERROR ---', error);
+    console.error('--- DOWNLOAD WITH TOKEN ERROR ---', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to export data.',
+      message: 'Failed to download file.',
       error: error.message,
     });
   }
@@ -392,8 +755,85 @@ const getReportTemplates = asyncHandler(async (req, res) => {
   });
 });
 
+// @desc    Test endpoint to check database data
+// @route   GET /api/reports/test-data
+// @access  Public (for debugging)
+const testDatabaseData = asyncHandler(async (req, res) => {
+  try {
+    const { startDate, endDate, organizationId } = req.query;
+
+    console.log('🔍 Test data request:', {
+      startDate,
+      endDate,
+      organizationId,
+    });
+
+    const filter = {
+      status: 'active',
+    };
+
+    if (startDate && endDate) {
+      filter.entryDate = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate),
+      };
+    }
+
+    if (organizationId) {
+      filter.organization = organizationId;
+    }
+
+    console.log('🔍 Test filter:', JSON.stringify(filter, null, 2));
+
+    const entries = await TruckEntry.find(filter)
+      .populate('userId', 'username email')
+      .populate('organization', 'name')
+      .sort({ entryDate: -1 })
+      .limit(10);
+
+    console.log('🔍 Found entries:', entries.length);
+
+    const totalEntries = await TruckEntry.countDocuments(filter);
+    const totalByOrg = await TruckEntry.aggregate([
+      { $match: filter },
+      { $group: { _id: '$organization', count: { $sum: 1 } } },
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        filter,
+        entries: entries.map(entry => ({
+          id: entry._id,
+          truckNumber: entry.truckNumber,
+          entryType: entry.entryType,
+          materialType: entry.materialType,
+          entryDate: entry.entryDate,
+          organization: entry.organization?.name || entry.organization,
+          user: entry.userId?.username || entry.userId,
+        })),
+        summary: {
+          totalEntries,
+          totalByOrg,
+          sampleEntries: entries.length,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('--- TEST DATA ERROR ---', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get test data.',
+      error: error.message,
+    });
+  }
+});
+
 module.exports = {
   getReportData,
   generateExportData,
   getReportTemplates,
+  generateBrowserDownload,
+  downloadWithToken,
+  testDatabaseData,
 };

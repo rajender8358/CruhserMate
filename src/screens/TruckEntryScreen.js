@@ -70,10 +70,14 @@ const TruckEntryScreen = ({ navigation, route }) => {
   const [userRole, setUserRole] = useState('user');
 
   // Get dynamic data from app config
-  const allMaterialTypes = appConfig?.materialTypes || [
+  const allMaterialTypes = [
     { value: 'M-Sand', label: 'M-Sand' },
     { value: 'P-Sand', label: 'P-Sand' },
-    { value: 'Blue Metal', label: 'Blue Metal' },
+    { value: 'Blue Metal 0.5in', label: 'Blue Metal 0.5in' },
+    { value: 'Blue Metal 0.75in', label: 'Blue Metal 0.75in' },
+    { value: 'Jally', label: 'Jally' },
+    { value: 'Kurunai', label: 'Kurunai' },
+    { value: 'Mixed', label: 'Mixed' },
     { value: 'Raw Stone', label: 'Raw Stone' },
   ];
 
@@ -82,20 +86,28 @@ const TruckEntryScreen = ({ navigation, route }) => {
     entryType === 'Sales'
       ? allMaterialTypes.filter(type => type.value !== 'Raw Stone')
       : allMaterialTypes.filter(type => type.value === 'Raw Stone');
-  const entryTypes = appConfig?.entryTypes || [
+
+  // Ensure entry types are always available
+  const defaultEntryTypes = [
     { value: 'Sales', label: 'Sales' },
     { value: 'Raw Stone', label: 'Raw Stone' },
   ];
+
+  const entryTypes = appConfig?.entryTypes || defaultEntryTypes;
 
   // Fallback material rates if API doesn't return them
   const fallbackMaterialRates = {
     'M-Sand': { currentRate: 22000 },
     'P-Sand': { currentRate: 20000 },
-    'Blue Metal': { currentRate: 24000 },
+    'Blue Metal 0.5in': { currentRate: 24000 },
+    'Blue Metal 0.75in': { currentRate: 25000 },
+    Jally: { currentRate: 18000 },
+    Kurunai: { currentRate: 16000 },
+    Mixed: { currentRate: 20000 },
     'Raw Stone': { currentRate: 18000 },
   };
 
-  const materialRates = appConfig?.materialRates || fallbackMaterialRates;
+  const materialRates = fallbackMaterialRates;
 
   useEffect(() => {
     checkAllPermissions();
@@ -244,38 +256,82 @@ const TruckEntryScreen = ({ navigation, route }) => {
 
   const extractTruckNumber = async imageUri => {
     try {
-      console.log('🔍 Starting OCR extraction for truck number...');
+      setLoading(true);
 
-      const imageFile = { uri: imageUri };
-      const response = await apiService.extractTruckNumberFromImage(imageFile);
+      // Create form data for image upload
+      const formData = new FormData();
+      formData.append('image', {
+        uri: imageUri,
+        type: 'image/jpeg',
+        name: 'truck_image.jpg',
+      });
 
-      if (response.success && response.data.truckNumber) {
-        console.log(
-          `✅ OCR extracted truck number: ${response.data.truckNumber}`,
-        );
-        setTruckNumber(response.data.truckNumber);
-        Alert.alert(
-          'Truck Number Detected',
-          `Found truck number: ${response.data.truckNumber}`,
-          [{ text: 'OK' }],
-        );
+      // Call OCR API
+      const response = await fetch('https://api.ocr.space/parse/image', {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`OCR API error: ${response.status}`);
+      }
+
+      const result = await response.json();
+
+      if (result.ParsedResults && result.ParsedResults.length > 0) {
+        const extractedText = result.ParsedResults[0].ParsedText;
+
+        // Extract truck number using regex patterns for Indian truck numbers
+        const truckNumberPatterns = [
+          /[A-Z]{2}[\s\-]?[0-9]{2}[\s\-]?[A-Z]{1,2}[\s\-]?[0-9]{4}/g, // TN 02 AB 1234
+          /[A-Z]{2}[\s\-]?[0-9]{2}[\s\-]?[0-9]{4}/g, // TN 02 1234
+          /[A-Z]{2}[\s\-]?[0-9]{4}[\s\-]?[A-Z]{2}/g, // TN 1234 AB
+          /[A-Z]{2}[\s\-]?[0-9]{2}[\s\-]?[A-Z]{1,2}[\s\-]?[0-9]{3,4}/g, // TN 02 A 1234
+          /[A-Z]{2}[\s\-]?[0-9]{1,2}[\s\-]?[A-Z]{1,2}[\s\-]?[0-9]{3,4}/g, // TN 2 AB 1234
+        ];
+
+        let extractedTruckNumber = '';
+
+        for (const pattern of truckNumberPatterns) {
+          const matches = extractedText.match(pattern);
+          if (matches && matches.length > 0) {
+            extractedTruckNumber = matches[0].replace(/\s+/g, '').toUpperCase();
+            break;
+          }
+        }
+
+        if (extractedTruckNumber) {
+          setTruckNumber(extractedTruckNumber);
+          Alert.alert(
+            'Truck Number Detected',
+            `Extracted truck number: ${extractedTruckNumber}`,
+            [{ text: 'OK' }],
+          );
+        } else {
+          Alert.alert(
+            'No Truck Number Found',
+            'Could not detect a valid truck number from the image. Please enter it manually.',
+            [{ text: 'OK' }],
+          );
+        }
       } else {
-        console.log('❌ No truck number found in image');
-        setTruckNumber(''); // Clear the field if no number found
         Alert.alert(
-          'No Truck Number Found',
-          'No truck number was detected in the image. Please enter it manually.',
+          'OCR Failed',
+          'Could not read text from the image. Please enter the truck number manually.',
           [{ text: 'OK' }],
         );
       }
     } catch (error) {
-      console.error('❌ OCR extraction failed:', error);
-      setTruckNumber(''); // Clear the field on error
       Alert.alert(
-        'OCR Processing Error',
-        'Failed to process image for truck number. Please enter it manually.',
+        'OCR Error',
+        'Failed to extract truck number. Please enter it manually.',
         [{ text: 'OK' }],
       );
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -470,11 +526,6 @@ const TruckEntryScreen = ({ navigation, route }) => {
         notes: notes.trim(),
       };
 
-      console.log(
-        '📤 Debug - Entry data being sent:',
-        JSON.stringify(entryData, null, 2),
-      );
-
       // Debug token loading
       const savedToken = await AsyncStorage.getItem('userToken');
       if (savedToken) {
@@ -563,63 +614,86 @@ const TruckEntryScreen = ({ navigation, route }) => {
     clearMessages();
   };
 
-  const renderDropdownModal = (visible, setVisible, items, onSelect, title) => (
-    <Modal
-      visible={visible}
-      transparent={true}
-      animationType="slide"
-      onRequestClose={() => setVisible(false)}
-    >
-      <View style={styles.dropdownModalOverlay}>
-        <View style={styles.dropdownModalContent}>
-          {/* Header */}
-          <View style={styles.dropdownModalHeader}>
-            <Text style={styles.dropdownModalTitle}>{title}</Text>
-            <TouchableOpacity
-              style={styles.dropdownModalCloseButton}
-              onPress={() => setVisible(false)}
-            >
-              <Text style={styles.dropdownModalCloseText}>✕</Text>
-            </TouchableOpacity>
-          </View>
+  const renderDropdownModal = (visible, setVisible, items, onSelect, title) => {
+    // Calculate modal height based on number of options
+    const isEntryTypeModal = title === 'Select Entry Type';
+    const modalHeight = isEntryTypeModal ? '50%' : '80%';
+    const optionsMaxHeight = isEntryTypeModal ? 150 : 400;
 
-          {/* Options List */}
-          <View style={styles.dropdownOptionsContainer}>
-            {items.map((item, index) => (
-              <TouchableOpacity
-                key={item.value}
-                style={[
-                  styles.dropdownOption,
-                  index === items.length - 1 && styles.dropdownOptionLast,
-                ]}
-                onPress={() => {
-                  onSelect(item.value);
-                  setVisible(false);
-                }}
-                activeOpacity={0.7}
-              >
-                <View style={styles.dropdownOptionContent}>
-                  <Text style={styles.dropdownOptionText}>{item.label}</Text>
-                  <View style={styles.dropdownOptionIcon}>
-                    <Text style={styles.dropdownOptionArrow}>→</Text>
-                  </View>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {/* Cancel Button */}
-          <TouchableOpacity
-            style={styles.dropdownCancelButton}
-            onPress={() => setVisible(false)}
-            activeOpacity={0.8}
+    return (
+      <Modal
+        visible={visible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setVisible(false)}
+      >
+        <View style={styles.dropdownModalOverlay}>
+          <View
+            style={[styles.dropdownModalContent, { maxHeight: modalHeight }]}
           >
-            <Text style={styles.dropdownCancelText}>Cancel</Text>
-          </TouchableOpacity>
+            {/* Header */}
+            <View style={styles.dropdownModalHeader}>
+              <Text style={styles.dropdownModalTitle}>{title}</Text>
+            </View>
+
+            {/* Options List with ScrollView */}
+            <ScrollView
+              style={[
+                styles.dropdownOptionsContainer,
+                { maxHeight: optionsMaxHeight },
+              ]}
+              showsVerticalScrollIndicator={true}
+            >
+              {items && items.length > 0 ? (
+                items.map((item, index) => {
+                  return (
+                    <TouchableOpacity
+                      key={item.value}
+                      style={[
+                        styles.dropdownOption,
+                        index === items.length - 1 && styles.dropdownOptionLast,
+                      ]}
+                      onPress={() => {
+                        onSelect(item.value);
+                        setVisible(false);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.dropdownOptionContent}>
+                        <Text style={styles.dropdownOptionText}>
+                          {item.label}
+                        </Text>
+                        <View style={styles.dropdownOptionIcon}>
+                          <Text style={styles.dropdownOptionArrow}>→</Text>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })
+              ) : (
+                <View style={styles.dropdownOption}>
+                  <Text style={styles.dropdownOptionText}>
+                    No options available
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
+
+            {/* Cancel Button - Fixed at bottom */}
+            <View style={styles.dropdownCancelContainer}>
+              <TouchableOpacity
+                style={styles.dropdownCancelButton}
+                onPress={() => setVisible(false)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.dropdownCancelText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
-      </View>
-    </Modal>
-  );
+      </Modal>
+    );
+  };
 
   const renderImagePickerModal = () => (
     <Modal
@@ -630,9 +704,10 @@ const TruckEntryScreen = ({ navigation, route }) => {
     >
       <View style={styles.imagePickerOverlay}>
         <View style={styles.imagePickerContent}>
-          <Text style={styles.imagePickerTitle}>Capture Truck Image</Text>
+          <Text style={styles.imagePickerTitle}>Capture Truck Number</Text>
           <Text style={styles.imagePickerSubtitle}>
-            Choose how to add truck image for entry record
+            Take a photo of the truck number plate to auto-fill the truck number
+            field
           </Text>
 
           <View style={styles.imagePickerOptions}>
@@ -645,7 +720,7 @@ const TruckEntryScreen = ({ navigation, route }) => {
               </View>
               <Text style={styles.imagePickerOptionTitle}>Take Photo</Text>
               <Text style={styles.imagePickerOptionDesc}>
-                Capture truck image with camera
+                Capture truck number plate with camera
               </Text>
             </TouchableOpacity>
 
@@ -660,7 +735,7 @@ const TruckEntryScreen = ({ navigation, route }) => {
                 Choose from Gallery
               </Text>
               <Text style={styles.imagePickerOptionDesc}>
-                Select existing image from gallery
+                Select existing truck number plate image
               </Text>
             </TouchableOpacity>
           </View>
@@ -714,9 +789,9 @@ const TruckEntryScreen = ({ navigation, route }) => {
               />
             ) : (
               <View style={styles.imagePlaceholder}>
-                <Text style={styles.imagePlaceholderIcon}></Text>
+                <Text style={styles.imagePlaceholderIcon}>📷</Text>
                 <Text style={styles.imagePlaceholderText}>
-                  Tap to capture truck image (optional)
+                  Tap to capture truck number plate (optional)
                 </Text>
               </View>
             )}
@@ -740,9 +815,18 @@ const TruckEntryScreen = ({ navigation, route }) => {
               autoCapitalize="characters"
               maxLength={15}
             />
+            {loading && (
+              <ActivityIndicator
+                size="small"
+                color={theme.COLORS.primary}
+                style={{ marginLeft: 10 }}
+              />
+            )}
           </View>
           <Text style={styles.helperText}>
-            Enter any combination of letters and numbers (5-15 characters)
+            {loading
+              ? 'Processing image for truck number...'
+              : 'Enter truck number manually or capture from image above'}
           </Text>
         </View>
 
@@ -1289,7 +1373,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.COLORS.white,
     borderRadius: 20,
     width: '90%',
-    maxHeight: '70%',
+    minHeight: 200,
     overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -1299,7 +1383,7 @@ const styles = StyleSheet.create({
   },
   dropdownModalHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
     borderBottomWidth: 1,
@@ -1311,16 +1395,9 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: theme.COLORS.text,
   },
-  dropdownModalCloseButton: {
-    padding: 8,
-  },
-  dropdownModalCloseText: {
-    fontSize: 24,
-    color: theme.COLORS.darkGray,
-  },
   dropdownOptionsContainer: {
-    maxHeight: '70%', // Allow options to scroll
-    paddingBottom: 16,
+    minHeight: 50,
+    backgroundColor: theme.COLORS.white,
   },
   dropdownOption: {
     flexDirection: 'row',
@@ -1353,13 +1430,20 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: theme.COLORS.darkGray,
   },
+  dropdownCancelContainer: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: theme.COLORS.lightGray,
+    backgroundColor: theme.COLORS.white,
+  },
   dropdownCancelButton: {
     backgroundColor: theme.COLORS.lightGray,
     paddingVertical: 16,
     paddingHorizontal: 20,
     alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: theme.COLORS.gray,
+    borderRadius: 8,
   },
   dropdownCancelText: {
     fontSize: 16,

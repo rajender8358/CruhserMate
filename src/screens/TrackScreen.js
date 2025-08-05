@@ -15,6 +15,7 @@ import theme from '../assets/theme';
 import apiService from '../services/apiService';
 import { useAuth } from '../context/AuthContext';
 import { APP_ROUTES } from '../navigations/Routes';
+import { getStoredUser } from '../utils/storageUtils';
 import { formatCurrency } from '../utils/formatting';
 
 const { width } = Dimensions.get('window');
@@ -54,17 +55,14 @@ const TrackScreen = ({ navigation }) => {
 
   const loadUserData = async () => {
     try {
-      const userData = await AsyncStorage.getItem('user');
-      if (userData) {
-        const user = JSON.parse(userData);
-        if (user && typeof user === 'object') {
-          setUserRole(user.role || 'user');
-          setUserDetails({
-            name: user.username || 'User',
-            role: user.role === 'user' ? 'User' : 'Owner',
-            company: user.organizationName || 'CrusherMate Operations',
-          });
-        }
+      const user = await getStoredUser();
+      if (user && typeof user === 'object') {
+        setUserRole(user.role || 'user');
+        setUserDetails({
+          name: user.username || 'User',
+          role: user.role === 'user' ? 'User' : 'Owner',
+          company: user.organizationName || 'CrusherMate Operations',
+        });
       }
     } catch (error) {
       console.error('Failed to load user data:', error);
@@ -89,30 +87,67 @@ const TrackScreen = ({ navigation }) => {
       const today = new Date();
       const todayString = today.toISOString().split('T')[0];
 
-      console.log('📅 Loading entries for:', todayString);
+      // Get truck entries and other expenses from API
+      const [truckResponse, otherExpensesResponse] = await Promise.all([
+        apiService.getTruckEntries({
+          startDate: todayString,
+          endDate: todayString,
+          limit: 50,
+        }),
+        apiService.getOtherExpenses({
+          startDate: todayString,
+          endDate: todayString,
+          limit: 50,
+        }),
+      ]);
 
-      // Get truck entries from API
-      const response = await apiService.getTruckEntries({
-        startDate: todayString,
-        endDate: todayString,
-        limit: 50,
-      });
+      let allEntries = [];
 
-      if (response.success) {
-        const entries = response.data || [];
-        // Ensure entries is an array and filter out any invalid entries
-        const validEntries = Array.isArray(entries)
-          ? entries.filter(entry => entry && typeof entry === 'object')
+      // Process truck entries
+      if (truckResponse.success) {
+        const truckEntries = truckResponse.data || [];
+        const validTruckEntries = Array.isArray(truckEntries)
+          ? truckEntries.filter(entry => entry && typeof entry === 'object')
           : [];
-        setTodayEntries(validEntries);
-        console.log('✅ Loaded entries:', validEntries.length);
+        allEntries = [...validTruckEntries];
       } else {
-        setErrorMessage('Failed to load entries. Please try again.');
-        setTodayEntries([]);
+        // Handle truck entries error silently
       }
-    } catch (error) {
-      console.error('❌ Error loading entries:', error);
 
+      // Process other expenses
+      if (otherExpensesResponse.success) {
+        const otherExpenses = otherExpensesResponse.data || [];
+        const validOtherExpenses = Array.isArray(otherExpenses)
+          ? otherExpenses.filter(
+              expense => expense && typeof expense === 'object',
+            )
+          : [];
+
+        // Transform other expenses to match entry format for display
+        const transformedExpenses = validOtherExpenses.map(expense => ({
+          ...expense,
+          entryType: 'Expense',
+          materialType: 'Expense',
+          amount: expense.amount,
+          expensesName: expense.expensesName,
+          others: expense.others,
+          date: expense.date,
+          _id: expense._id,
+        }));
+
+        allEntries = [...allEntries, ...transformedExpenses];
+      } else {
+        // Handle other expenses error silently
+      }
+
+      // Sort all entries by date (newest first)
+      allEntries.sort(
+        (a, b) =>
+          new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt),
+      );
+
+      setTodayEntries(allEntries);
+    } catch (error) {
       let errorMsg = 'Failed to load entries. Please check your connection.';
       if (error.message) {
         if (error.message.includes('Network')) {
@@ -145,6 +180,125 @@ const TrackScreen = ({ navigation }) => {
     });
   };
 
+  const handleEditOtherExpense = entry => {
+    navigation.navigate(APP_ROUTES.OTHER_EXPENSE, {
+      editMode: true,
+      entryData: entry,
+    });
+  };
+
+  const handleDeleteEntry = entryId => {
+    if (!entryId) {
+      Alert.alert('Error', 'Invalid entry ID');
+      return;
+    }
+
+    Alert.alert(
+      'Confirm Delete',
+      'Are you sure you want to delete this entry? This action cannot be undone.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const response = await apiService.deleteTruckEntry(entryId);
+
+              if (response.success) {
+                // Remove from local state
+                setTodayEntries(prev =>
+                  prev.filter(entry => entry?._id !== entryId),
+                );
+                Alert.alert(
+                  'Entry Deleted',
+                  'The entry has been deleted successfully.',
+                  [{ text: 'OK' }],
+                );
+              } else {
+                setErrorMessage(response.message || 'Failed to delete entry');
+              }
+            } catch (error) {
+              console.error('❌ Delete error:', error);
+
+              let errorMsg = 'Failed to delete entry. Please try again.';
+              if (error.message) {
+                if (error.message.includes('Network')) {
+                  errorMsg = 'Network error. Please check your connection.';
+                } else if (error.message.includes('timeout')) {
+                  errorMsg = 'Request timed out. Please try again.';
+                } else {
+                  errorMsg = error.message;
+                }
+              }
+
+              setErrorMessage(errorMsg);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const handleDeleteOtherExpense = entryId => {
+    if (!entryId) {
+      Alert.alert('Error', 'Invalid entry ID');
+      return;
+    }
+
+    Alert.alert(
+      'Confirm Delete',
+      'Are you sure you want to delete this expense? This action cannot be undone.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const response = await apiService.deleteOtherExpense(entryId);
+
+              if (response.success) {
+                // Remove from local state
+                setTodayEntries(prev =>
+                  prev.filter(entry => entry?._id !== entryId),
+                );
+                Alert.alert(
+                  'Expense Deleted',
+                  'The expense has been deleted successfully.',
+                  [{ text: 'OK' }],
+                );
+              } else {
+                setErrorMessage(response.message || 'Failed to delete expense');
+              }
+            } catch (error) {
+              console.error('❌ Delete other expense error:', error);
+
+              let errorMsg = 'Failed to delete expense. Please try again.';
+              if (error.message) {
+                if (error.message.includes('Network')) {
+                  errorMsg = 'Network error. Please check your connection.';
+                } else if (error.message.includes('timeout')) {
+                  errorMsg = 'Request timed out. Please try again.';
+                } else {
+                  errorMsg = error.message;
+                }
+              }
+
+              setErrorMessage(errorMsg);
+            }
+          },
+        },
+      ],
+    );
+  };
+
   const handleLogout = async () => {
     Alert.alert(
       'Confirm Logout',
@@ -168,73 +322,10 @@ const TrackScreen = ({ navigation }) => {
 
               // Use AuthContext to handle logout
               await logout();
-
-              console.log('🔓 User logged out successfully');
             } catch (error) {
-              console.error('❌ Logout error:', error);
               Alert.alert('Error', 'Failed to logout. Please try again.', [
                 { text: 'OK' },
               ]);
-            }
-          },
-        },
-      ],
-    );
-  };
-
-  const handleDeleteEntry = entryId => {
-    if (!entryId) {
-      Alert.alert('Error', 'Invalid entry ID');
-      return;
-    }
-
-    Alert.alert(
-      'Confirm Delete',
-      'Are you sure you want to delete this entry? This action cannot be undone.',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              console.log('🗑️ Deleting entry:', entryId);
-
-              const response = await apiService.deleteTruckEntry(entryId);
-
-              if (response.success) {
-                // Remove from local state
-                setTodayEntries(prev =>
-                  prev.filter(entry => entry?._id !== entryId),
-                );
-                Alert.alert(
-                  'Entry Deleted',
-                  'The entry has been deleted successfully.',
-                  [{ text: 'OK' }],
-                );
-
-                console.log('✅ Entry deleted successfully');
-              } else {
-                setErrorMessage(response.message || 'Failed to delete entry');
-              }
-            } catch (error) {
-              console.error('❌ Delete error:', error);
-
-              let errorMsg = 'Failed to delete entry. Please try again.';
-              if (error.message) {
-                if (error.message.includes('Network')) {
-                  errorMsg = 'Network error. Please check your connection.';
-                } else if (error.message.includes('timeout')) {
-                  errorMsg = 'Request timed out. Please try again.';
-                } else {
-                  errorMsg = error.message;
-                }
-              }
-
-              setErrorMessage(errorMsg);
             }
           },
         },
@@ -267,6 +358,14 @@ const TrackScreen = ({ navigation }) => {
     ).length;
   };
 
+  const getOtherExpensesCount = () => {
+    if (!Array.isArray(todayEntries)) return 0;
+    return todayEntries.filter(
+      entry =>
+        entry && typeof entry === 'object' && entry?.entryType === 'Expense',
+    ).length;
+  };
+
   const renderEntryCard = (entry, index) => {
     // Defensive check - if entry is undefined or null, don't render
     if (!entry || typeof entry !== 'object') {
@@ -275,6 +374,7 @@ const TrackScreen = ({ navigation }) => {
     }
 
     const isLastCard = index === todayEntries.length - 1;
+    const isOtherExpense = entry.entryType === 'Expense';
 
     const formatTime = timeString => {
       if (!timeString || typeof timeString !== 'string') return '';
@@ -288,6 +388,74 @@ const TrackScreen = ({ navigation }) => {
       return `${formattedHour}:${minute || '00'} ${ampm}`;
     };
 
+    // Render Other Expense card
+    if (isOtherExpense) {
+      return (
+        <View
+          key={entry._id}
+          style={[styles.entryCard, isLastCard && styles.lastCard]}
+        >
+          {/* Header with expense name and time */}
+          <View style={styles.entryHeader}>
+            <View style={styles.truckInfo}>
+              <Text style={styles.truckNumber}>
+                {entry?.expensesName || 'Unknown Expense'}
+              </Text>
+              <Text style={styles.entryTime}>
+                {entry?.date
+                  ? new Date(entry.date).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })
+                  : ''}
+              </Text>
+            </View>
+            <View style={styles.entryActions}>
+              <TouchableOpacity
+                style={styles.editButton}
+                onPress={() => handleEditOtherExpense(entry)}
+              >
+                <Text style={styles.editButtonText}>Edit</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.deleteButton}
+                onPress={() => handleDeleteOtherExpense(entry?._id)}
+              >
+                <Text style={styles.deleteButtonText}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Other Expense details */}
+          <View style={styles.entryDetails}>
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Type:</Text>
+              <View style={[styles.entryTypeBadge, styles.otherExpenseBadge]}>
+                <Text style={[styles.entryTypeText, styles.otherExpenseText]}>
+                  Expense
+                </Text>
+              </View>
+            </View>
+
+            {entry?.others && (
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Description:</Text>
+                <Text style={styles.detailValue}>{entry.others}</Text>
+              </View>
+            )}
+
+            <View style={styles.totalRow}>
+              <Text style={styles.totalLabel}>Amount:</Text>
+              <Text style={styles.totalAmount}>
+                {formatCurrency(entry?.amount)}
+              </Text>
+            </View>
+          </View>
+        </View>
+      );
+    }
+
+    // Render regular truck entry card
     return (
       <View
         key={entry._id}
@@ -375,46 +543,111 @@ const TrackScreen = ({ navigation }) => {
     );
   };
 
-  const renderSummary = () => (
-    <View style={styles.summaryContainer}>
-      <Text style={styles.summaryTitle}>Today's Summary</Text>
-      <View style={styles.summaryContent}>
-        <View style={styles.summaryRow}>
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryValue}>{todayEntries.length}</Text>
-            <Text style={styles.summaryLabel}>Total Entries</Text>
-          </View>
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryValue}>{getSalesCount()}</Text>
-            <Text style={styles.summaryLabel}>Sales</Text>
-          </View>
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryValue}>{getRawStoneCount()}</Text>
-            <Text style={styles.summaryLabel}>Raw Stone</Text>
-          </View>
-        </View>
-        <View style={styles.totalAmountContainer}>
-          <Text style={styles.totalAmountLabel}>Total Amount</Text>
-          <Text style={styles.totalAmountValue}>
-            {formatCurrency(getTotalAmount())}
-          </Text>
-        </View>
-      </View>
+  const renderSummary = () => {
+    const salesCount = getSalesCount();
+    const rawStoneCount = getRawStoneCount();
+    const otherExpensesCount = getOtherExpensesCount();
+    const totalEntries = todayEntries.length;
 
-      {/* Owner Dashboard Button */}
-      {userRole === 'owner' && (
-        <View style={styles.ownerButtonsContainer}>
-          <TouchableOpacity
-            style={styles.ownerButton}
-            onPress={() => navigation.navigate(APP_ROUTES.DASHBOARD)}
-          >
-            <Text style={styles.ownerButtonIcon}>📊</Text>
-            <Text style={styles.ownerButtonText}>Dashboard</Text>
-          </TouchableOpacity>
+    // Calculate totals for each type
+    const salesTotal = todayEntries
+      .filter(entry => entry?.entryType === 'Sales')
+      .reduce((sum, entry) => sum + (entry?.totalAmount || 0), 0);
+
+    const rawStoneTotal = todayEntries
+      .filter(entry => entry?.entryType === 'Raw Stone')
+      .reduce((sum, entry) => sum + (entry?.totalAmount || 0), 0);
+
+    const otherExpensesTotal = todayEntries
+      .filter(entry => entry?.entryType === 'Expense')
+      .reduce((sum, entry) => sum + (entry?.amount || 0), 0);
+
+    // Calculate Net Worth (Sales - Raw Stone - Other Expenses)
+    const netWorth = salesTotal - rawStoneTotal - otherExpensesTotal;
+
+    return (
+      <View style={styles.summaryContainer}>
+        <Text style={styles.summaryTitle}>Today's Summary</Text>
+
+        {/* Entry Counts Row */}
+        <View style={styles.summaryContent}>
+          <View style={styles.summaryRow}>
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryValue}>{totalEntries}</Text>
+              <Text style={styles.summaryLabel}>Total Entries</Text>
+            </View>
+            <View style={styles.summaryItem}>
+              <Text style={[styles.summaryValue, styles.salesValue]}>
+                {salesCount}
+              </Text>
+              <Text style={styles.summaryLabel}>Sales</Text>
+            </View>
+            <View style={styles.summaryItem}>
+              <Text style={[styles.summaryValue, styles.rawStoneValue]}>
+                {rawStoneCount}
+              </Text>
+              <Text style={styles.summaryLabel}>Raw Stone</Text>
+            </View>
+            <View style={styles.summaryItem}>
+              <Text style={[styles.summaryValue, styles.otherExpenseValue]}>
+                {otherExpensesCount}
+              </Text>
+              <Text style={styles.summaryLabel}>Expenses</Text>
+            </View>
+          </View>
+
+          {/* Financial Summary */}
+          <View style={styles.financialSummary}>
+            <View style={styles.financialRow}>
+              <Text style={styles.financialLabel}>Sales Revenue:</Text>
+              <Text style={[styles.financialValue, styles.salesValue]}>
+                {formatCurrency(salesTotal)}
+              </Text>
+            </View>
+            <View style={styles.financialRow}>
+              <Text style={styles.financialLabel}>Raw Stone Cost:</Text>
+              <Text style={[styles.financialValue, styles.rawStoneValue]}>
+                {formatCurrency(rawStoneTotal)}
+              </Text>
+            </View>
+            <View style={styles.financialRow}>
+              <Text style={styles.financialLabel}>Expenses:</Text>
+              <Text style={[styles.financialValue, styles.otherExpenseValue]}>
+                {formatCurrency(otherExpensesTotal)}
+              </Text>
+            </View>
+            <View style={[styles.financialRow, styles.netWorthRow]}>
+              <Text style={styles.netWorthLabel}>Net Worth:</Text>
+              <Text
+                style={[
+                  styles.financialValue,
+                  styles.netWorthValue,
+                  netWorth >= 0
+                    ? styles.positiveNetWorth
+                    : styles.negativeNetWorth,
+                ]}
+              >
+                {formatCurrency(netWorth)}
+              </Text>
+            </View>
+          </View>
         </View>
-      )}
-    </View>
-  );
+
+        {/* Owner Dashboard Button */}
+        {userRole === 'owner' && (
+          <View style={styles.ownerButtonsContainer}>
+            <TouchableOpacity
+              style={styles.ownerButton}
+              onPress={() => navigation.navigate(APP_ROUTES.DASHBOARD)}
+            >
+              <Text style={styles.ownerButtonIcon}>📊</Text>
+              <Text style={styles.ownerButtonText}>Dashboard</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+    );
+  };
 
   const renderEmptyState = () => {
     // Defensive check for userDetails
@@ -451,13 +684,26 @@ const TrackScreen = ({ navigation }) => {
         </View>
 
         {/* Add Entry Button */}
-        <TouchableOpacity
-          style={styles.emptyStateButton}
-          onPress={() => navigation.navigate(APP_ROUTES.TRUCK_ENTRY)}
-        >
-          <Text style={styles.emptyStateButtonIcon}>+</Text>
-          <Text style={styles.emptyStateButtonText}>Add Entry</Text>
-        </TouchableOpacity>
+        <View style={styles.emptyStateButtonRow}>
+          <TouchableOpacity
+            style={styles.emptyStateButton}
+            onPress={() => navigation.navigate(APP_ROUTES.TRUCK_ENTRY)}
+          >
+            <Text style={styles.emptyStateButtonIcon}>+</Text>
+            <Text style={styles.emptyStateButtonText}>Add Entry</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.emptyStateButton,
+              { backgroundColor: theme.COLORS.secondary },
+            ]}
+            onPress={() => navigation.navigate(APP_ROUTES.OTHER_EXPENSE)}
+          >
+            {/* <Text style={styles.emptyStateButtonIcon}>💰</Text> */}
+            <Text style={styles.emptyStateButtonText}>Expenses</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* Owner Dashboard Button - Show for owners even in empty state */}
         {userRole === 'owner' && (
@@ -515,7 +761,7 @@ const TrackScreen = ({ navigation }) => {
       {/* Error Message */}
       {errorMessage ? (
         <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>❌ {errorMessage}</Text>
+          <Text style={styles.errorText}>{errorMessage}</Text>
         </View>
       ) : null}
 
@@ -549,13 +795,23 @@ const TrackScreen = ({ navigation }) => {
       {/* Add Entry Button - Fixed at bottom */}
       {todayEntries.length > 0 && (
         <View style={styles.addEntryContainer}>
-          <TouchableOpacity
-            style={styles.addEntryButton}
-            onPress={() => navigation.navigate(APP_ROUTES.TRUCK_ENTRY)}
-          >
-            <Text style={styles.addEntryButtonIcon}>+</Text>
-            <Text style={styles.addEntryButtonText}>Add Entry</Text>
-          </TouchableOpacity>
+          <View style={styles.buttonRow}>
+            <TouchableOpacity
+              style={styles.addEntryButton}
+              onPress={() => navigation.navigate(APP_ROUTES.TRUCK_ENTRY)}
+            >
+              <Text style={styles.addEntryButtonIcon}>+</Text>
+              <Text style={styles.addEntryButtonText}>Add Entry</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.otherExpensesButton}
+              onPress={() => navigation.navigate(APP_ROUTES.OTHER_EXPENSE)}
+            >
+              {/* <Text style={styles.otherExpensesButtonIcon}>💰</Text> */}
+              <Text style={styles.otherExpensesButtonText}>Expenses</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       )}
     </View>
@@ -836,6 +1092,9 @@ const styles = StyleSheet.create({
   rawStoneBadge: {
     backgroundColor: '#FFF4E6',
   },
+  otherExpenseBadge: {
+    backgroundColor: '#E3F2FD',
+  },
   entryTypeText: {
     fontSize: 12,
     fontWeight: '600',
@@ -845,6 +1104,9 @@ const styles = StyleSheet.create({
   },
   rawStoneText: {
     color: '#F57C00',
+  },
+  otherExpenseText: {
+    color: '#1976D2',
   },
   totalRow: {
     flexDirection: 'row',
@@ -938,16 +1200,18 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   emptyStateButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.COLORS.secondary,
+    backgroundColor: theme.COLORS.primary,
     paddingVertical: 16,
+    paddingHorizontal: 20,
     borderRadius: 12,
-    elevation: 2,
+    elevation: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.2,
     shadowRadius: 4,
   },
   emptyStateButtonIcon: {
@@ -1007,7 +1271,13 @@ const styles = StyleSheet.create({
     right: 20,
     left: 20,
   },
+  buttonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
   addEntryButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1032,6 +1302,32 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: theme.COLORS.white,
   },
+  otherExpensesButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.COLORS.secondary,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+  },
+  otherExpensesButtonIcon: {
+    fontSize: 20,
+    color: theme.COLORS.white,
+    marginRight: 8,
+    fontWeight: 'bold',
+  },
+  otherExpensesButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.COLORS.white,
+  },
   editButtonText: {
     fontSize: 14,
     fontWeight: '600',
@@ -1041,6 +1337,68 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: theme.COLORS.white,
+  },
+  emptyStateButtonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginTop: 20,
+  },
+  otherExpenseBadge: {
+    backgroundColor: '#E0F2F7', // A light blue for other expenses
+  },
+  otherExpenseText: {
+    color: '#0277BD', // A dark blue for other expenses
+  },
+  salesValue: {
+    color: '#2E7D32', // Green for sales
+  },
+  rawStoneValue: {
+    color: '#F57C00', // Orange for raw stone
+  },
+  otherExpenseValue: {
+    color: '#1976D2', // Blue for other expenses
+  },
+  financialSummary: {
+    marginTop: 20,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: theme.COLORS.lightGray,
+  },
+  financialRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  financialLabel: {
+    fontSize: 14,
+    color: theme.COLORS.gray,
+    fontWeight: '500',
+  },
+  financialValue: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  netWorthRow: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: theme.COLORS.lightGray,
+  },
+  netWorthLabel: {
+    fontSize: 14,
+    color: theme.COLORS.gray,
+    fontWeight: '500',
+  },
+  netWorthValue: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  positiveNetWorth: {
+    color: '#2E7D32', // Green for positive net worth
+  },
+  negativeNetWorth: {
+    color: '#F44336', // Red for negative net worth
   },
 });
 

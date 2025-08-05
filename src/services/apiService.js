@@ -1,23 +1,11 @@
 // API Configuration
 import { Platform } from 'react-native';
 
-// Production URL - Deployed on Vercel (Use stable domain)
+// Production URL - Deployed on Vercel
 const PRODUCTION_URL = 'https://crushermate-backend.vercel.app/api';
 
-// Development URLs
-const DEV_URL = __DEV__ ? 'http://192.168.29.242:3000/api' : PRODUCTION_URL;
-
-// For physical device testing in development, use your computer's IP address
-// Replace 192.168.29.242 with your actual computer's IP address
-const DEV_PHYSICAL_URL = 'http://192.168.29.242:3000/api';
-
-// Use production URL for release builds, development URL for debug builds
+// Use production URL for all environments
 let API_BASE_URL = PRODUCTION_URL;
-
-console.log('🌐 API Service - Using URL:', API_BASE_URL);
-console.log('🔧 Development mode:', __DEV__);
-
-export { API_BASE_URL };
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -28,68 +16,45 @@ class ApiService {
     this.initialized = false;
   }
 
-  // Initialize token from AsyncStorage
   async initialize() {
     if (this.initialized) return;
 
     try {
       const token = await AsyncStorage.getItem('userToken');
-      console.log(
-        '🔍 Initializing API service, token found:',
-        token ? 'Yes' : 'No',
-      );
       if (token) {
         this.token = token;
-        console.log(
-          '🔑 Token loaded from storage:',
-          token.substring(0, 20) + '...',
-        );
-      } else {
-        console.log('⚠️ No token found in storage');
       }
       this.initialized = true;
     } catch (error) {
-      console.error('❌ Failed to load token from storage:', error);
+      console.error('❌ Failed to initialize API service:', error);
     }
   }
 
-  // Set authentication token and save to storage
   async setToken(token) {
     this.token = token;
     try {
       if (token) {
         await AsyncStorage.setItem('userToken', token);
-        console.log('🔑 Token saved to storage');
       } else {
         await AsyncStorage.removeItem('userToken');
-        console.log('🔑 Token removed from storage');
       }
     } catch (error) {
       console.error('❌ Failed to save token to storage:', error);
     }
   }
 
-  // Clear authentication token
   async clearToken() {
     this.token = null;
     try {
       await AsyncStorage.removeItem('userToken');
-      console.log('🔑 Token cleared from storage');
     } catch (error) {
-      console.error('❌ Failed to clear token from storage:', error);
+      // Handle error silently
     }
   }
 
   // Debug method to check token status
   async debugTokenStatus() {
     const storedToken = await AsyncStorage.getItem('userToken');
-    console.log('🔍 Debug Token Status:');
-    console.log('  - Stored token:', storedToken ? 'Yes' : 'No');
-    console.log('  - Memory token:', this.token ? 'Yes' : 'No');
-    console.log('  - Initialized:', this.initialized);
-    if (storedToken) {
-      console.log('  - Token preview:', storedToken.substring(0, 20) + '...');
-    }
     return {
       stored: !!storedToken,
       memory: !!this.token,
@@ -97,69 +62,49 @@ class ApiService {
     };
   }
 
-  // Helper method to make API requests
   async request(endpoint, options = {}) {
-    // Ensure token is loaded
-    await this.initialize();
-
     const url = `${this.baseURL}${endpoint}`;
-
     const defaultHeaders = {};
 
     // Only set Content-Type for JSON requests, not for multipart form data
     if (
       !options.headers ||
       !options.headers['Content-Type'] ||
-      !options.headers['Content-Type'].includes('multipart/form-data')
+      options.headers['Content-Type'] === 'application/json'
     ) {
       defaultHeaders['Content-Type'] = 'application/json';
     }
 
     if (this.token) {
       defaultHeaders.Authorization = `Bearer ${this.token}`;
-      console.log(
-        '🔑 Using token for request:',
-        this.token.substring(0, 20) + '...',
-      );
-    } else {
-      console.log('⚠️ No token available for request');
-      console.log('🔍 Current token state:', this.token);
     }
 
     const requestOptions = {
-      ...options,
+      method: options.method || 'GET',
       headers: {
         ...defaultHeaders,
         ...options.headers,
       },
-      // Note: AbortSignal.timeout() is not available in React Native
-      // We'll handle timeouts differently
     };
 
-    try {
-      console.log(`🌐 API Request: ${options.method || 'GET'} ${url}`);
-      console.log('📤 Request Headers:', requestOptions.headers);
-      if (requestOptions.body) {
-        console.log('📤 Request Body:', requestOptions.body);
-      }
+    if (options.body) {
+      requestOptions.body = options.body;
+    }
 
+    try {
       // Create a timeout promise
       const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => {
-          reject(new Error('Request timeout after 30 seconds'));
+          reject(new Error('Request timeout'));
         }, 30000); // 30 seconds timeout
       });
 
-      // Race between fetch and timeout
       const response = await Promise.race([
         fetch(url, requestOptions),
         timeoutPromise,
       ]);
 
-      console.log(`📥 Response Status: ${response.status}`);
-
       const data = await response.json();
-      console.log('📥 Response Data:', data);
 
       if (!response.ok) {
         throw new Error(
@@ -169,13 +114,6 @@ class ApiService {
 
       return data;
     } catch (error) {
-      console.error('❌ API Request failed:', error);
-      console.error('🔍 Error details:', {
-        message: error.message,
-        stack: error.stack,
-        url: url,
-        method: options.method || 'GET',
-      });
       throw error;
     }
   }
@@ -187,27 +125,18 @@ class ApiService {
         `${this.baseURL.replace('/api', '')}/health`,
       );
       const data = await response.json();
-      console.log('🔍 Connection test result:', data);
       return data;
     } catch (error) {
-      console.error('❌ Connection test failed:', error);
       throw error;
     }
   }
 
-  // Authentication APIs
-  async login(username, password) {
-    const response = await this.request('/auth/login', {
+  // Auth APIs
+  async login(credentials) {
+    return this.request('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify(credentials),
     });
-
-    // Save token after successful login
-    if (response.success && response.data.token) {
-      await this.setToken(response.data.token);
-    }
-
-    return response;
   }
 
   async register(userData) {
@@ -217,57 +146,40 @@ class ApiService {
     });
   }
 
-  async verifyToken() {
-    return this.request('/auth/verify-token');
+  async getProfile() {
+    return this.request('/auth/profile');
   }
 
-  // Configuration APIs
+  // App Configuration APIs
   async getAppConfig() {
     return this.request('/config/app');
   }
 
-  async getCurrentRates(units = 1) {
-    return this.request(`/config/rates?units=${units}`);
+  async getMaterialRates() {
+    return this.request('/config/material-rates');
   }
 
-  async calculateTotal(units, ratePerUnit, materialType = null) {
-    return this.request('/config/calculate', {
-      method: 'POST',
-      body: JSON.stringify({ units, ratePerUnit, materialType }),
-    });
-  }
-
-  async validateTruckEntry(entryData) {
-    console.log(
-      '🔍 API Service - validateTruckEntry data:',
-      JSON.stringify(entryData, null, 2),
-    );
-    return this.request('/config/validate', {
-      method: 'POST',
-      body: JSON.stringify(entryData),
+  async updateMaterialRates(rates) {
+    return this.request('/config/material-rates', {
+      method: 'PUT',
+      body: JSON.stringify(rates),
     });
   }
 
   // Truck Entry APIs
-  async createTruckEntry(entryData, imageFile = null) {
-    if (imageFile) {
-      // Handle multipart form data for image upload
+  async createTruckEntry(entryData, imageUri = null) {
+    if (imageUri) {
+      // Handle image upload
       const formData = new FormData();
-
-      // Add entry data
-      if (entryData && typeof entryData === 'object') {
-        Object.keys(entryData).forEach(key => {
-          if (entryData[key] !== undefined && entryData[key] !== null) {
-            formData.append(key, entryData[key]);
-          }
-        });
-      }
-
-      // Add image file
-      formData.append('truckImage', {
-        uri: imageFile.uri,
+      formData.append('image', {
+        uri: imageUri,
         type: 'image/jpeg',
         name: 'truck-image.jpg',
+      });
+
+      // Add other entry data
+      Object.keys(entryData).forEach(key => {
+        formData.append(key, entryData[key]);
       });
 
       return this.request('/truck-entries', {
@@ -278,11 +190,6 @@ class ApiService {
         },
       });
     } else {
-      // Regular JSON request without image
-      console.log(
-        '🔍 API Service - createTruckEntry data:',
-        JSON.stringify(entryData || {}, null, 2),
-      );
       return this.request('/truck-entries', {
         method: 'POST',
         body: JSON.stringify(entryData || {}),
@@ -292,48 +199,17 @@ class ApiService {
 
   async getTruckEntries(filters = {}) {
     const queryParams = new URLSearchParams(filters).toString();
-    return this.request(`/truck-entries?${queryParams}`);
+    const endpoint = queryParams
+      ? `/truck-entries?${queryParams}`
+      : '/truck-entries';
+    return this.request(endpoint);
   }
 
-  async getTruckEntry(id) {
-    return this.request(`/truck-entries/${id}`);
-  }
-
-  async updateTruckEntry(id, entryData, imageFile = null) {
-    if (imageFile) {
-      // Handle multipart form data for image upload
-      const formData = new FormData();
-
-      // Add entry data
-      if (entryData && typeof entryData === 'object') {
-        Object.keys(entryData).forEach(key => {
-          if (entryData[key] !== undefined && entryData[key] !== null) {
-            formData.append(key, entryData[key]);
-          }
-        });
-      }
-
-      // Add image file
-      formData.append('truckImage', {
-        uri: imageFile.uri,
-        type: 'image/jpeg',
-        name: 'truck-image.jpg',
-      });
-
-      return this.request(`/truck-entries/${id}`, {
-        method: 'PUT',
-        body: formData,
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-    } else {
-      // Regular JSON request without image
-      return this.request(`/truck-entries/${id}`, {
-        method: 'PUT',
-        body: JSON.stringify(entryData || {}),
-      });
-    }
+  async updateTruckEntry(id, entryData) {
+    return this.request(`/truck-entries/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(entryData),
+    });
   }
 
   async deleteTruckEntry(id) {
@@ -343,176 +219,94 @@ class ApiService {
   }
 
   // Dashboard APIs
-  async getTruckEntriesSummary(filters = {}) {
+  async getDashboardSummary(filters = {}) {
     const queryParams = new URLSearchParams(filters).toString();
-    return this.request(`/truck-entries/summary?${queryParams}`);
-  }
-
-  async getDashboardSummary(
-    period = 'month',
-    userId = null,
-    startDate = null,
-    endDate = null,
-  ) {
-    const params = new URLSearchParams({ period });
-    if (userId) params.append('userId', userId);
-    if (startDate) params.append('startDate', startDate);
-    if (endDate) params.append('endDate', endDate);
-    return this.request(`/dashboard/summary?${params}`);
-  }
-
-  async getFinancialMetrics(period = 'month', userId = null) {
-    const params = new URLSearchParams({ period });
-    if (userId) params.append('userId', userId);
-    return this.request(`/dashboard/financial?${params}`);
-  }
-
-  async getOrganizations() {
-    return this.request('/organizations');
+    const endpoint = queryParams
+      ? `/dashboard/summary?${queryParams}`
+      : '/dashboard/summary';
+    return this.request(endpoint);
   }
 
   // Report APIs
-  async getReportData(filters) {
-    const queryParams = new URLSearchParams(filters).toString();
-    return this.request(`/reports/data?${queryParams}`);
-  }
-
-  async generateDownloadableReport(exportOptions) {
-    console.log('🔍 PDF Export - Starting export with options:', exportOptions);
-
-    const response = await fetch(`${API_BASE_URL}/reports/export`, {
+  async generateReport(exportOptions) {
+    const response = await fetch(`${this.baseURL}/reports/generate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...(this.token && { Authorization: `Bearer ${this.token}` }),
       },
       body: JSON.stringify(exportOptions),
     });
 
-    console.log('🔍 PDF Export - Response status:', response.status);
-    console.log('🔍 PDF Export - Response headers:', response.headers);
-
     if (!response.ok) {
       const errorData = await response.json();
-      console.error('🔍 PDF Export - Error response:', errorData);
       throw new Error(
         errorData.message || `HTTP error! status: ${response.status}`,
       );
     }
 
-    // Get the filename from the Content-Disposition header
-    const contentDisposition = response.headers.get('Content-Disposition');
-    const filename = contentDisposition
-      ? contentDisposition.split('filename=')[1]?.replace(/"/g, '')
-      : `CrusherMate_Report_${new Date().toISOString().split('T')[0]}.pdf`;
-
-    console.log('🔍 PDF Export - Success, filename:', filename);
-
-    // For React Native, return the direct URL to open in browser with query parameters
-    const queryParams = new URLSearchParams({
-      startDate: exportOptions.startDate,
-      endDate: exportOptions.endDate,
-      format: exportOptions.format || 'pdf',
-      organizationId: exportOptions.organizationId || '',
-    }).toString();
+    const responseData = await response.json();
 
     return {
       success: true,
       data: {
-        downloadUrl: `${API_BASE_URL}/reports/export?${queryParams}`,
-        fileName: filename,
-        entriesCount: 0,
-        summary: {
-          totalSales: 0,
-          totalRawStone: 0,
-          netProfit: 0,
-        },
+        downloadUrl: responseData.downloadUrl,
+        token: responseData.token,
       },
     };
   }
 
-  async getReportTemplates() {
-    return this.request('/reports/templates');
-  }
-
-  async exportData(exportOptions) {
-    const token = await AsyncStorage.getItem('userToken');
-    const response = await fetch(`${API_BASE_URL}/reports/export`, {
-      method: 'POST',
+  async downloadReport(token) {
+    const response = await fetch(`${this.baseURL}/reports/download/${token}`, {
       headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
+        ...(this.token && { Authorization: `Bearer ${this.token}` }),
       },
-      body: JSON.stringify(exportOptions),
     });
-    return this.handleResponse(response);
-  }
 
-  async handleResponse(response) {
-    if (response.ok) {
-      return response.json();
+    if (!response.ok) {
+      throw new Error(`Download failed! status: ${response.status}`);
     }
-    const errorData = await response.json();
-    throw new Error(
-      errorData.message || `HTTP error! status: ${response.status}`,
-    );
+
+    return response.blob();
   }
 
-  // Material Rate APIs
-  async getMaterialRates() {
-    return this.request('/material-rates');
-  }
-
-  async updateMaterialRate(rateData) {
-    return this.request('/material-rates', {
+  // Expenses APIs
+  async createOtherExpense(expenseData) {
+    return this.request('/expenses', {
       method: 'POST',
-      body: JSON.stringify(rateData),
+      body: JSON.stringify(expenseData),
     });
   }
 
-  async getMaterialRateHistory(materialType, limit = 10) {
-    return this.request(
-      `/material-rates/history?materialType=${materialType}&limit=${limit}`,
-    );
+  async getOtherExpenses(filters = {}) {
+    const queryParams = new URLSearchParams(filters).toString();
+    const endpoint = queryParams ? `/expenses?${queryParams}` : '/expenses';
+    return this.request(endpoint);
   }
 
-  // OCR APIs
-  async extractTruckNumberFromImage(imageFile) {
-    const formData = new FormData();
-    formData.append('image', {
-      uri: imageFile.uri,
-      type: 'image/jpeg',
-      name: 'truck-image.jpg',
-    });
-
-    return this.request('/ocr/extract-truck-number', {
-      method: 'POST',
-      body: formData,
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
-  }
-
-  async ocrHealth() {
-    return this.request('/ocr/health');
-  }
-
-  // User Profile APIs
-  async getUserProfile() {
-    return this.request('/user/profile');
-  }
-
-  async updateUserProfile(userData) {
-    return this.request('/user/profile', {
+  async updateOtherExpense(id, expenseData) {
+    return this.request(`/expenses/${id}`, {
       method: 'PUT',
-      body: JSON.stringify(userData),
+      body: JSON.stringify(expenseData),
     });
+  }
+
+  async deleteOtherExpense(id) {
+    return this.request(`/expenses/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getOtherExpensesSummary(filters = {}) {
+    const queryParams = new URLSearchParams(filters).toString();
+    const endpoint = queryParams
+      ? `/expenses/summary?${queryParams}`
+      : '/expenses/summary';
+    return this.request(endpoint);
   }
 }
 
-// Create a singleton instance
 const apiService = new ApiService();
-
 export default apiService;
 
 // Utility functions

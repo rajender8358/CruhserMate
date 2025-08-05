@@ -18,11 +18,9 @@ const App = () => {
     // Initialize API service on app startup
     const initializeApp = async () => {
       try {
-        console.log('🚀 Initializing CrusherMate app...');
         await apiService.initialize();
-        console.log('✅ API service initialized');
       } catch (error) {
-        console.error('❌ Failed to initialize API service:', error);
+        // Handle initialization error silently
       }
     };
 

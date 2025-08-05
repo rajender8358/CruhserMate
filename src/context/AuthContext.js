@@ -7,6 +7,7 @@ import React, {
 } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import apiService from '../services/apiService';
+import { getStoredUser, getStoredToken, clearCorruptedData } from '../utils/storageUtils';
 
 const AuthContext = createContext();
 
@@ -26,34 +27,18 @@ export const AuthProvider = ({ children }) => {
   const checkAuthStatus = useCallback(async () => {
     setIsLoading(true);
     try {
-      const storedUser = await AsyncStorage.getItem('user');
-      console.log('🔍 AuthContext - Stored user data:', storedUser);
+      const parsedUser = await getStoredUser();
+      const token = await getStoredToken();
 
-      if (storedUser) {
-        const parsedUser = JSON.parse(storedUser);
-        const token = await AsyncStorage.getItem('userToken');
-
-        if (token) {
-          await apiService.setToken(token); // Set token for future requests
-          setUser(parsedUser);
-          setIsAuthenticated(true);
-          console.log(
-            '✅ User authenticated from storage:',
-            parsedUser.username,
-            'Role:',
-            parsedUser.role,
-          );
-        } else {
-          console.log('❌ No token found, logging out');
-          await logout(); // Clean up if token is missing
-        }
+      if (parsedUser && token) {
+        await apiService.setToken(token); // Set token for future requests
+        setUser(parsedUser);
+        setIsAuthenticated(true);
       } else {
-        console.log('❌ No stored user data found');
-        setIsAuthenticated(false);
-        setUser(null);
+        await logout(); // Clean up if data is missing
       }
     } catch (error) {
-      console.error('❌ Error checking auth status:', error);
+      console.error('Auth check error:', error);
       await logout(); // Clear state on error
     } finally {
       setIsLoading(false);
@@ -66,20 +51,13 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (userData, token) => {
     try {
-      console.log('🔍 AuthContext - Login called with userData:', userData);
       await AsyncStorage.setItem('user', JSON.stringify(userData));
       await AsyncStorage.setItem('userToken', token);
       await apiService.setToken(token); // Update token in ApiService instance
       setUser(userData);
       setIsAuthenticated(true);
-      console.log(
-        '✅ Login successful, auth state updated for:',
-        userData.username,
-        'Role:',
-        userData.role,
-      );
     } catch (error) {
-      console.error('❌ Error saving user data:', error);
+      // Handle error silently
     }
   };
 
@@ -90,9 +68,8 @@ export const AuthProvider = ({ children }) => {
       await apiService.clearToken(); // Clear token in ApiService instance
       setUser(null);
       setIsAuthenticated(false);
-      console.log('✅ Logout successful, auth state cleared');
     } catch (error) {
-      console.error('❌ Error during logout:', error);
+      // Handle error silently
     }
   };
 

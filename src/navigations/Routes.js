@@ -11,6 +11,7 @@ export const APP_ROUTES = {
   TRACK: 'Track',
   DASHBOARD: 'Dashboard',
   MATERIAL_RATES: 'MaterialRates',
+  OTHER_EXPENSE: 'OtherExpense',
   PROFILE: 'Profile',
   SETTINGS: 'Settings',
 };

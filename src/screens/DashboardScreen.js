@@ -29,7 +29,6 @@ const DashboardScreen = () => {
     summary: {},
     topMaterials: [],
     recentEntries: [],
-    todayEntries: 0,
   });
   const [selectedDay, setSelectedDay] = useState('all');
   const [dayData, setDayData] = useState({
@@ -69,26 +68,11 @@ const DashboardScreen = () => {
       // Get the current period data
       const period = selectedDay === 'all' ? 'week' : selectedDay;
       const { startDate, endDate } = getDayDates(selectedDay);
-
-      console.log(`📊 Exporting ${type.toUpperCase()} for period: ${period}`);
-      console.log(`📅 Date range: ${startDate} to ${endDate}`);
-
-      // Debug user organization
-      console.log('🔍 User object:', user);
-      console.log('🔍 User organization:', user?.organization);
-      console.log('🔍 Organization type:', typeof user?.organization);
-
-      // Debug: Log what we're sending
-      console.log('🔍 User organization:', user?.organization);
-      console.log('🔍 User object:', user);
-
-      // Generate downloadable report
       const response = await apiService.generateDownloadableReport({
         startDate,
         endDate,
         format: type,
         reportType: 'dashboard',
-        organizationId: user?.organization,
       });
 
       if (!response.success) {
@@ -96,11 +80,6 @@ const DashboardScreen = () => {
       }
 
       const { downloadUrl, fileName, entriesCount, summary } = response.data;
-
-      console.log(`📈 Report generated: ${entriesCount} entries`);
-      console.log(`📥 Download URL: ${downloadUrl}`);
-
-      // Open the download URL in browser
       try {
         await Linking.openURL(downloadUrl);
 
@@ -120,7 +99,7 @@ const DashboardScreen = () => {
           [{ text: 'OK' }],
         );
       } catch (linkError) {
-        console.error('❌ Failed to open download link:', linkError);
+        console.error('Failed to open download link:', linkError);
         Alert.alert(
           'Download Link Generated',
           `Your ${type.toUpperCase()} report has been generated.\n\n` +
@@ -135,7 +114,7 @@ const DashboardScreen = () => {
         );
       }
     } catch (error) {
-      console.error('❌ Export error:', error);
+      console.error('Export error:', error);
       Alert.alert(
         'Export Failed',
         `Failed to generate ${type.toUpperCase()} report: ${error.message}`,
@@ -276,26 +255,65 @@ const DashboardScreen = () => {
 
       if (!dayDates) return;
 
-      const response = await apiService.getTruckEntries({
-        startDate: dayDates.startDate,
-        endDate: dayDates.endDate,
-        page,
-        limit: 10,
-      });
+      // Fetch both truck entries and other expenses
+      const [truckResponse, otherExpensesResponse] = await Promise.all([
+        apiService.getTruckEntries({
+          startDate: dayDates.startDate,
+          endDate: dayDates.endDate,
+          page,
+          limit: 10,
+        }),
+        apiService.getOtherExpenses({
+          startDate: dayDates.startDate,
+          endDate: dayDates.endDate,
+          page,
+          limit: 10,
+        }),
+      ]);
 
-      if (response.success) {
-        const entries = response.data || [];
-        setAllEntries(prev => (page === 1 ? entries : [...prev, ...entries]));
-        setPagination(
-          response.pagination || {
-            hasNextPage: false,
-            currentPage: page,
-            totalPages: 1,
-          },
-        );
-      } else {
-        Alert.alert('Error', response.message || 'Failed to fetch entries');
+      let allEntries = [];
+
+      // Process truck entries
+      if (truckResponse.success) {
+        const truckEntries = truckResponse.data || [];
+        allEntries = [...truckEntries];
       }
+
+      // Process other expenses
+      if (otherExpensesResponse.success) {
+        const otherExpenses = otherExpensesResponse.data || [];
+
+        // Transform other expenses to match entry format for display
+        const transformedExpenses = otherExpenses.map(expense => ({
+          ...expense,
+          entryType: 'Expense',
+          materialType: 'Expense',
+          amount: expense.amount,
+          expensesName: expense.expensesName,
+          others: expense.others,
+          date: expense.date,
+          _id: expense._id,
+        }));
+
+        allEntries = [...allEntries, ...transformedExpenses];
+      }
+
+      // Sort all entries by date (newest first)
+      allEntries.sort(
+        (a, b) =>
+          new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt),
+      );
+
+      setAllEntries(prev =>
+        page === 1 ? allEntries : [...prev, ...allEntries],
+      );
+      setPagination(
+        truckResponse.pagination || {
+          hasNextPage: false,
+          currentPage: page,
+          totalPages: 1,
+        },
+      );
     } catch (error) {
       console.error('Fetch entries error:', error);
       Alert.alert('Error', 'Network error while fetching entries');
@@ -307,11 +325,23 @@ const DashboardScreen = () => {
     value,
     subtitle,
     color = theme.COLORS.primary,
+    fullWidth = false,
   }) => (
-    <View style={[styles.metricCard, { borderLeftColor: color }]}>
-      <Text style={styles.metricTitle}>{title}</Text>
-      <Text style={styles.metricValue}>{value}</Text>
-      {subtitle && <Text style={styles.metricSubtitle}>{subtitle}</Text>}
+    <View
+      style={[
+        styles.metricCard,
+        { borderLeftColor: color, width: fullWidth ? '100%' : '48%' },
+      ]}
+    >
+      <Text style={[styles.metricTitle, fullWidth && styles.centeredText]}>
+        {title}
+      </Text>
+      <Text style={[styles.metricValue, fullWidth && styles.centeredText]}>
+        {value}
+      </Text>
+      <Text style={[styles.metricSubtitle, fullWidth && styles.centeredText]}>
+        {subtitle}
+      </Text>
     </View>
   );
 
@@ -328,6 +358,34 @@ const DashboardScreen = () => {
       return `${formattedHour}:${minute || '00'} ${ampm}`;
     };
 
+    const isOtherExpense = entry.entryType === 'Expense';
+
+    // Render Other Expense card
+    if (isOtherExpense) {
+      return (
+        <View style={styles.recentEntryCard}>
+          <View style={styles.entryHeader}>
+            <Text style={styles.entryType}>Expense</Text>
+            <Text style={styles.entryDate}>
+              {new Date(entry.date || entry.createdAt).toLocaleDateString()} at{' '}
+              {entry.date
+                ? new Date(entry.date).toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })
+                : formatTime(entry.entryTime)}
+            </Text>
+          </View>
+          <Text style={styles.entryDetails}>
+            {entry.expensesName || 'Unknown Expense'}
+            {entry.others && ` - ${entry.others}`}
+          </Text>
+          <Text style={styles.entryPrice}>{formatCurrency(entry.amount)}</Text>
+        </View>
+      );
+    }
+
+    // Render regular truck entry card
     return (
       <View style={styles.recentEntryCard}>
         <View style={styles.entryHeader}>
@@ -462,53 +520,97 @@ const DashboardScreen = () => {
         {/* Metrics Section */}
         <View style={styles.metricsSection}>
           <Text style={styles.sectionTitle}>Overview</Text>
-          <View style={styles.metricsGrid}>
-            <MetricCard
-              title="Total Entries"
-              value={dashboardData.summary?.totalEntries ?? 0}
-              subtitle={
-                selectedDay === 'all'
-                  ? 'This Week'
-                  : (selectedDay || 'all').charAt(0).toUpperCase() +
-                    (selectedDay || 'all').slice(1)
-              }
-              color={theme.COLORS.primary}
-            />
-            <MetricCard
-              title="Today's Entries"
-              value={dashboardData.todayEntries ?? 0}
-              subtitle="Today"
-              color={theme.COLORS.secondary}
-            />
-            <MetricCard
-              title="Total Sales"
-              value={formatCurrency(dashboardData.summary?.totalSales ?? 0)}
-              subtitle={
-                selectedDay === 'all'
-                  ? 'This Week'
-                  : (selectedDay || 'all').charAt(0).toUpperCase() +
-                    (selectedDay || 'all').slice(1)
-              }
-              color="#FF9500"
-            />
-          </View>
-        </View>
 
-        {/* Entry Types Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Entry Types</Text>
-          <View style={styles.entryTypesContainer}>
-            <View style={styles.entryTypeCard}>
-              <Text style={styles.entryTypeTitle}>Sales</Text>
-              <Text style={styles.entryTypeCount}>
-                {formatCurrency(dashboardData.summary?.totalSales ?? 0)}
+          {/* Net Worth - Prominent Full Width Card */}
+          <View style={styles.netWorthContainer}>
+            <View style={[styles.metricCard, styles.netWorthCard]}>
+              <View style={styles.netWorthHeader}>
+                <Text style={styles.netWorthTitle}>Net Worth</Text>
+                <View
+                  style={[
+                    styles.netWorthBadge,
+                    (dashboardData.summary?.netProfit ?? 0) >= 0
+                      ? styles.profitBadge
+                      : styles.lossBadge,
+                  ]}
+                >
+                  <Text style={styles.netWorthBadgeText}>
+                    {(dashboardData.summary?.netProfit ?? 0) >= 0
+                      ? 'Profit'
+                      : 'Loss'}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.netWorthValue}>
+                {formatCurrency(dashboardData.summary?.netProfit ?? 0)}
+              </Text>
+              <Text style={styles.netWorthSubtitle}>
+                {selectedDay === 'all'
+                  ? 'This Week'
+                  : (selectedDay || 'all').charAt(0).toUpperCase() +
+                    (selectedDay || 'all').slice(1)}
               </Text>
             </View>
-            <View style={styles.entryTypeCard}>
-              <Text style={styles.entryTypeTitle}>Raw Stone</Text>
-              <Text style={styles.entryTypeCount}>
-                {formatCurrency(dashboardData.summary?.totalRawStone ?? 0)}
-              </Text>
+          </View>
+
+          {/* Four Metrics Grid */}
+          <View style={styles.metricsGrid}>
+            <View style={styles.metricsRow}>
+              <View style={[styles.metricCard, styles.metricCardSmall]}>
+                <Text style={styles.metricTitle}>Total Entries</Text>
+                <Text style={styles.metricValue}>
+                  {dashboardData.summary?.totalEntries ?? 0}
+                </Text>
+                <Text style={styles.metricSubtitle}>
+                  {selectedDay === 'all'
+                    ? 'This Week'
+                    : (selectedDay || 'all').charAt(0).toUpperCase() +
+                      (selectedDay || 'all').slice(1)}
+                </Text>
+              </View>
+
+              <View style={[styles.metricCard, styles.metricCardSmall]}>
+                <Text style={styles.metricTitle}>Total Sales</Text>
+                <Text style={styles.metricValue}>
+                  {formatCurrency(dashboardData.summary?.totalSales ?? 0)}
+                </Text>
+                <Text style={styles.metricSubtitle}>
+                  {selectedDay === 'all'
+                    ? 'This Week'
+                    : (selectedDay || 'all').charAt(0).toUpperCase() +
+                      (selectedDay || 'all').slice(1)}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.metricsRow}>
+              <View style={[styles.metricCard, styles.metricCardSmall]}>
+                <Text style={styles.metricTitle}>Raw Stone</Text>
+                <Text style={styles.metricValue}>
+                  {formatCurrency(dashboardData.summary?.totalRawStone ?? 0)}
+                </Text>
+                <Text style={styles.metricSubtitle}>
+                  {selectedDay === 'all'
+                    ? 'This Week'
+                    : (selectedDay || 'all').charAt(0).toUpperCase() +
+                      (selectedDay || 'all').slice(1)}
+                </Text>
+              </View>
+
+              <View style={[styles.metricCard, styles.metricCardSmall]}>
+                <Text style={styles.metricTitle}>Expenses</Text>
+                <Text style={styles.metricValue}>
+                  {formatCurrency(
+                    dashboardData.summary?.totalOtherExpenses ?? 0,
+                  )}
+                </Text>
+                <Text style={styles.metricSubtitle}>
+                  {selectedDay === 'all'
+                    ? 'This Week'
+                    : (selectedDay || 'all').charAt(0).toUpperCase() +
+                      (selectedDay || 'all').slice(1)}
+                </Text>
+              </View>
             </View>
           </View>
         </View>
@@ -528,66 +630,57 @@ const DashboardScreen = () => {
           </View>
         )}
 
-        {/* All Entries Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
-            Entries for{' '}
-            {selectedDay === 'all'
-              ? 'the Week'
-              : (selectedDay || 'all').charAt(0).toUpperCase() +
-                (selectedDay || 'all').slice(1)}
-          </Text>
+        {/* Recent Entries Section */}
+        <View style={styles.recentEntriesSection}>
+          <Text style={styles.sectionTitle}>Recent Entries</Text>
           {allEntries.length > 0 ? (
-            allEntries.map((entry, index) => (
-              <RecentEntryCard key={index} entry={entry} />
-            ))
+            allEntries
+              .slice(0, 5)
+              .map((entry, index) => (
+                <RecentEntryCard key={entry._id || index} entry={entry} />
+              ))
           ) : (
-            <Text style={styles.noEntriesText}>
-              No entries found for this day.
-            </Text>
-          )}
-
-          {pagination?.hasNextPage && (
-            <TouchableOpacity
-              style={styles.seeMoreButton}
-              onPress={() =>
-                fetchEntriesForDay((pagination?.currentPage || 1) + 1)
-              }
-            >
-              <Text style={styles.seeMoreButtonText}>See More</Text>
-            </TouchableOpacity>
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyStateText}>No recent entries</Text>
+            </View>
           )}
         </View>
-
-        {/* Download Buttons */}
-        <View style={styles.actionButtons}>
+        <View style={styles.downloadSection}>
           <TouchableOpacity
-            style={[
-              styles.actionButton,
-              { backgroundColor: theme.COLORS.primary },
-            ]}
+            style={[styles.downloadButton, styles.pdfButton]}
             onPress={() => handleExport('pdf')}
             disabled={exporting}
           >
             {exporting ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Text style={styles.actionButtonText}>📄 Download PDF</Text>
+              <Text style={styles.downloadButtonText}>Download PDF</Text>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.downloadButton, styles.csvButton]}
+            onPress={() => handleExport('csv')}
+            disabled={exporting}
+          >
+            {exporting ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.downloadButtonText}>Download CSV</Text>
             )}
           </TouchableOpacity>
         </View>
-
         {/* Owner-only Material Rates Button */}
         {user?.role === 'owner' && (
           <View style={styles.actionButtons}>
             <TouchableOpacity
               style={[
                 styles.actionButton,
-                { backgroundColor: '#059669' }, // Green color for rates
+                { backgroundColor: theme.COLORS.primary }, // Green color for rates
               ]}
               onPress={() => navigation.navigate(APP_ROUTES.MATERIAL_RATES)}
             >
-              <Text style={styles.actionButtonText}>💰 Material Rates</Text>
+              <Text style={styles.actionButtonText}>Material Rates</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -726,9 +819,8 @@ const styles = StyleSheet.create({
     marginBottom: 15,
   },
   metricsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    flexDirection: 'column',
+    width: '100%',
   },
   metricCard: {
     width: '48%',
@@ -776,16 +868,83 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   entryTypeTitle: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
-    color: '#666',
+    color: theme.COLORS.primary,
     marginBottom: 8,
   },
   entryTypeCount: {
-    fontSize: 22,
+    fontSize: 16,
     fontWeight: 'bold',
-    color: '#007AFF',
-    flexShrink: 1,
+    color: theme.COLORS.text,
+    marginBottom: 4,
+  },
+  entryTypeSubtitle: {
+    fontSize: 11,
+    color: theme.COLORS.gray,
+    marginTop: 2,
+  },
+  netWorthContainer: {
+    width: '100%',
+    marginBottom: 15,
+  },
+  netWorthCard: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
+    elevation: 5,
+    borderLeftWidth: 4,
+    borderLeftColor: '#FF3B30',
+  },
+  netWorthTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: theme.COLORS.text,
+  },
+  netWorthValue: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#FF3B30',
+    textAlign: 'center',
+    marginVertical: 10,
+  },
+  netWorthSubtitle: {
+    fontSize: 14,
+    color: theme.COLORS.gray,
+    textAlign: 'center',
+  },
+  netWorthBadge: {
+    backgroundColor: '#E0E0E0',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 5,
+    marginTop: 5,
+  },
+  profitBadge: {
+    backgroundColor: '#34C759',
+  },
+  lossBadge: {
+    backgroundColor: '#FF3B30',
+  },
+  netWorthBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  netWorthHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+    marginBottom: 10,
   },
   materialCard: {
     backgroundColor: '#FFFFFF',
@@ -865,7 +1024,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   actionButtons: {
-    marginTop: 30,
+    marginTop: 10,
     marginBottom: 20,
   },
   actionButton: {
@@ -892,6 +1051,76 @@ const styles = StyleSheet.create({
   },
   secondaryButtonText: {
     color: '#007AFF',
+  },
+  netWorthFullWidth: {
+    width: '100%',
+    marginTop: 15,
+  },
+  centeredText: {
+    textAlign: 'center',
+  },
+  metricCardSmall: {
+    width: '48%',
+    marginBottom: 10,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    padding: 15,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 2.22,
+    elevation: 3,
+  },
+  metricsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginBottom: 10,
+  },
+  recentEntriesSection: {
+    marginTop: 25,
+  },
+  emptyState: {
+    paddingVertical: 20,
+    alignItems: 'center',
+  },
+  emptyStateText: {
+    fontSize: 16,
+    color: '#666',
+    fontStyle: 'italic',
+  },
+  downloadSection: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 20,
+    marginBottom: 15,
+  },
+  downloadButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginHorizontal: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  pdfButton: {
+    backgroundColor: theme.COLORS.primary,
+  },
+  csvButton: {
+    backgroundColor: '#059669', // Green color for CSV
+  },
+  downloadButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
 

@@ -1,4 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from 'react';
 import {
   View,
   Text,
@@ -8,12 +14,53 @@ import {
   Alert,
   ActivityIndicator,
   TextInput,
+  KeyboardAvoidingView,
+  Platform,
+  Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import theme from '../assets/theme';
 import apiService from '../services/apiService';
+
+// Separate RateInput component to prevent re-renders
+const RateInput = React.forwardRef(
+  ({ materialType, label, currentRate, value, onChangeText }, ref) => {
+    return (
+      <View style={styles.rateInputContainer}>
+        <Text style={styles.materialLabel}>{label}</Text>
+        <View style={styles.inputRow}>
+          <Text style={styles.currencySymbol}>₹</Text>
+          <TextInput
+            ref={ref}
+            style={styles.rateInput}
+            value={value}
+            onChangeText={onChangeText}
+            placeholder="Enter rate"
+            placeholderTextColor={theme.COLORS.placeholder}
+            keyboardType="numeric"
+            maxLength={8}
+            returnKeyType="done"
+            blurOnSubmit={true}
+            autoCorrect={false}
+            autoCapitalize="none"
+            spellCheck={false}
+            selectTextOnFocus={true}
+            clearButtonMode="while-editing"
+          />
+        </View>
+        {currentRate ? (
+          <Text style={styles.currentRateText}>
+            Current: ₹{currentRate.toLocaleString('en-IN')}
+          </Text>
+        ) : (
+          <Text style={styles.noCurrentRateText}>No current rate set</Text>
+        )}
+      </View>
+    );
+  },
+);
 
 const MaterialRateScreen = () => {
   const navigation = useNavigation();
@@ -23,7 +70,11 @@ const MaterialRateScreen = () => {
   const [rates, setRates] = useState({
     'M-Sand': '',
     'P-Sand': '',
-    'Blue Metal': '',
+    'Blue Metal 0.5in': '',
+    'Blue Metal 0.75in': '',
+    Jally: '',
+    Kurunai: '',
+    Mixed: '',
     'Raw Stone': '',
   });
   const [currentRates, setCurrentRates] = useState({});
@@ -46,8 +97,6 @@ const MaterialRateScreen = () => {
       setLoading(true);
       const response = await apiService.getMaterialRates();
 
-      console.log('📊 Material rates response:', response);
-
       if (response.success && response.data && response.data.length > 0) {
         const ratesData = {};
         response.data.forEach(rate => {
@@ -59,17 +108,27 @@ const MaterialRateScreen = () => {
         setRates({
           'M-Sand': ratesData['M-Sand']?.toString() || '22000',
           'P-Sand': ratesData['P-Sand']?.toString() || '20000',
-          'Blue Metal': ratesData['Blue Metal']?.toString() || '24000',
+          'Blue Metal 0.5in':
+            ratesData['Blue Metal 0.5in']?.toString() || '24000',
+          'Blue Metal 0.75in':
+            ratesData['Blue Metal 0.75in']?.toString() || '25000',
+          Jally: ratesData['Jally']?.toString() || '18000',
+          Kurunai: ratesData['Kurunai']?.toString() || '16000',
+          Mixed: ratesData['Mixed']?.toString() || '20000',
           'Raw Stone': ratesData['Raw Stone']?.toString() || '18000',
         });
       } else {
         // If no rates found, use default values and show empty current rates
-        console.log('📊 No existing rates found, using defaults');
+
         setCurrentRates({});
         setRates({
           'M-Sand': '22000',
           'P-Sand': '20000',
-          'Blue Metal': '24000',
+          'Blue Metal 0.5in': '24000',
+          'Blue Metal 0.75in': '25000',
+          Jally: '18000',
+          Kurunai: '16000',
+          Mixed: '20000',
           'Raw Stone': '18000',
         });
       }
@@ -80,7 +139,11 @@ const MaterialRateScreen = () => {
       setRates({
         'M-Sand': '22000',
         'P-Sand': '20000',
-        'Blue Metal': '24000',
+        'Blue Metal 0.5in': '24000',
+        'Blue Metal 0.75in': '25000',
+        Jally: '18000',
+        Kurunai: '16000',
+        Mixed: '20000',
         'Raw Stone': '18000',
       });
     } finally {
@@ -88,16 +151,16 @@ const MaterialRateScreen = () => {
     }
   };
 
-  const handleRateChange = (materialType, value) => {
+  const handleRateChange = useCallback((materialType, value) => {
     // Only allow numbers
     const numericValue = value.replace(/[^0-9]/g, '');
     setRates(prev => ({
       ...prev,
       [materialType]: numericValue,
     }));
-  };
+  }, []);
 
-  const validateRates = () => {
+  const validateRates = useCallback(() => {
     const errors = [];
     Object.entries(rates).forEach(([materialType, rate]) => {
       if (!rate || rate === '') {
@@ -107,7 +170,7 @@ const MaterialRateScreen = () => {
       }
     });
     return errors;
-  };
+  }, [rates]);
 
   const handleSaveRates = async () => {
     const errors = validateRates();
@@ -135,31 +198,6 @@ const MaterialRateScreen = () => {
       setSaving(false);
     }
   };
-
-  const RateInput = ({ materialType, label, currentRate }) => (
-    <View style={styles.rateInputContainer}>
-      <Text style={styles.materialLabel}>{label}</Text>
-      <View style={styles.inputRow}>
-        <Text style={styles.currencySymbol}>₹</Text>
-        <TextInput
-          style={styles.rateInput}
-          value={rates[materialType]}
-          onChangeText={value => handleRateChange(materialType, value)}
-          placeholder="Enter rate"
-          placeholderTextColor={theme.COLORS.placeholder}
-          keyboardType="numeric"
-          maxLength={8}
-        />
-      </View>
-      {currentRate ? (
-        <Text style={styles.currentRateText}>
-          Current: ₹{currentRate.toLocaleString('en-IN')}
-        </Text>
-      ) : (
-        <Text style={styles.noCurrentRateText}>No current rate set</Text>
-      )}
-    </View>
-  );
 
   if (loading) {
     return (
@@ -189,64 +227,116 @@ const MaterialRateScreen = () => {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Material Rates</Text>
-          <Text style={styles.sectionDescription}>
-            Set the current market rates for each material type. These rates
-            will be used to auto-fill prices when creating truck entries. You
-            can edit the rates below and save them.
-          </Text>
-        </View>
-
-        {/* Rate Inputs */}
-        <View style={styles.ratesContainer}>
-          <RateInput
-            materialType="M-Sand"
-            label="M-Sand"
-            currentRate={currentRates['M-Sand']}
-          />
-          <RateInput
-            materialType="P-Sand"
-            label="P-Sand"
-            currentRate={currentRates['P-Sand']}
-          />
-          <RateInput
-            materialType="Blue Metal"
-            label="Blue Metal"
-            currentRate={currentRates['Blue Metal']}
-          />
-          <RateInput
-            materialType="Raw Stone"
-            label="Raw Stone"
-            currentRate={currentRates['Raw Stone']}
-          />
-        </View>
-
-        {/* Save Button */}
-        <TouchableOpacity
-          style={[styles.saveButton, saving && styles.saveButtonDisabled]}
-          onPress={handleSaveRates}
-          disabled={saving}
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoidingView}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
+        <ScrollView
+          style={styles.content}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="none"
+          contentContainerStyle={styles.scrollContent}
         >
-          {saving ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Text style={styles.saveButtonText}>💾 Save Rates</Text>
-          )}
-        </TouchableOpacity>
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Material Rates</Text>
+            <Text style={styles.sectionDescription}>
+              Set the current market rates for each material type. These rates
+              will be used to auto-fill prices when creating truck entries. You
+              can edit the rates below and save them.
+            </Text>
+          </View>
 
-        {/* Info Section */}
-        <View style={styles.infoSection}>
-          <Text style={styles.infoTitle}>ℹ️ Information</Text>
-          <Text style={styles.infoText}>
-            • Rates are used to auto-fill prices when creating truck entries
-            {'\n'}• Changes take effect immediately{'\n'}• All users in your
-            organization will see these rates{'\n'}• Rates are stored per
-            organization
-          </Text>
-        </View>
-      </ScrollView>
+          {/* Rate Inputs */}
+          <View style={styles.ratesContainer}>
+            <RateInput
+              materialType="M-Sand"
+              label="M-Sand"
+              currentRate={currentRates['M-Sand']}
+              value={rates['M-Sand']}
+              onChangeText={value => handleRateChange('M-Sand', value)}
+            />
+            <RateInput
+              materialType="P-Sand"
+              label="P-Sand"
+              currentRate={currentRates['P-Sand']}
+              value={rates['P-Sand']}
+              onChangeText={value => handleRateChange('P-Sand', value)}
+            />
+            <RateInput
+              materialType="Blue Metal 0.5in"
+              label="Blue Metal 0.5in"
+              currentRate={currentRates['Blue Metal 0.5in']}
+              value={rates['Blue Metal 0.5in']}
+              onChangeText={value =>
+                handleRateChange('Blue Metal 0.5in', value)
+              }
+            />
+            <RateInput
+              materialType="Blue Metal 0.75in"
+              label="Blue Metal 0.75in"
+              currentRate={currentRates['Blue Metal 0.75in']}
+              value={rates['Blue Metal 0.75in']}
+              onChangeText={value =>
+                handleRateChange('Blue Metal 0.75in', value)
+              }
+            />
+            <RateInput
+              materialType="Jally"
+              label="Jally"
+              currentRate={currentRates['Jally']}
+              value={rates['Jally']}
+              onChangeText={value => handleRateChange('Jally', value)}
+            />
+            <RateInput
+              materialType="Kurunai"
+              label="Kurunai"
+              currentRate={currentRates['Kurunai']}
+              value={rates['Kurunai']}
+              onChangeText={value => handleRateChange('Kurunai', value)}
+            />
+            <RateInput
+              materialType="Mixed"
+              label="Mixed"
+              currentRate={currentRates['Mixed']}
+              value={rates['Mixed']}
+              onChangeText={value => handleRateChange('Mixed', value)}
+            />
+            <RateInput
+              materialType="Raw Stone"
+              label="Raw Stone"
+              currentRate={currentRates['Raw Stone']}
+              value={rates['Raw Stone']}
+              onChangeText={value => handleRateChange('Raw Stone', value)}
+            />
+          </View>
+
+          {/* Save Button */}
+          <TouchableOpacity
+            style={[styles.saveButton, saving && styles.saveButtonDisabled]}
+            onPress={handleSaveRates}
+            disabled={saving}
+          >
+            {saving ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.saveButtonText}>💾 Save Rates</Text>
+            )}
+          </TouchableOpacity>
+
+          {/* Info Section */}
+          <View style={styles.infoSection}>
+            <Text style={styles.infoTitle}>ℹ️ Information</Text>
+            <Text style={styles.infoText}>
+              • Rates are used to auto-fill prices when creating truck entries
+              {'\n'}• Changes take effect immediately{'\n'}• All users in your
+              organization will see these rates{'\n'}• Rates are stored per
+              organization
+            </Text>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
@@ -255,6 +345,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: theme.COLORS.background || '#F8F9FA',
+  },
+  keyboardAvoidingView: {
+    flex: 1,
   },
   loadingContainer: {
     flex: 1,
@@ -312,6 +405,9 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 20,
     paddingTop: 20,
+  },
+  scrollContent: {
+    paddingBottom: 40,
   },
   section: {
     marginBottom: 24,

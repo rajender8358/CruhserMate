@@ -7,6 +7,7 @@ import TruckEntryScreen from '../screens/TruckEntryScreen';
 import DashboardScreen from '../screens/DashboardScreen';
 import TrackScreen from '../screens/TrackScreen';
 import MaterialRateScreen from '../screens/MaterialRateScreen';
+import OtherExpenseScreen from '../screens/OtherExpenseScreen';
 
 const Stack = createStackNavigator();
 
@@ -25,6 +26,10 @@ const AppNavigator = () => {
       <Stack.Screen
         name={APP_ROUTES.MATERIAL_RATES}
         component={MaterialRateScreen}
+      />
+      <Stack.Screen
+        name={APP_ROUTES.OTHER_EXPENSE}
+        component={OtherExpenseScreen}
       />
       {/* Add other app screens here */}
     </Stack.Navigator>

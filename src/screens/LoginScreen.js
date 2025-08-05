@@ -198,14 +198,14 @@ const LoginScreen = ({ navigation }) => {
         {/* Success Message */}
         {successMessage ? (
           <View style={styles.successContainer}>
-            <Text style={styles.successText}>✅ {successMessage}</Text>
+            <Text style={styles.successText}>{successMessage}</Text>
           </View>
         ) : null}
 
         {/* Error Message */}
         {errorMessage ? (
           <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>❌ {errorMessage}</Text>
+            <Text style={styles.errorText}>{errorMessage}</Text>
           </View>
         ) : null}
 
