@@ -52,9 +52,9 @@ start_backend_if_needed() {
             cat > backend/.env.testing << EOF
 NODE_ENV=development
 PORT=3001
-MONGODB_URI=mongodb+srv://rajenderreddygarlapalli:MacBook%408358%249154@crushermate.utrbdfv.mongodb.net/CrusherMate_Testing?retryWrites=true&w=majority
-JWT_SECRET=crushermate_testing_app_super_secret_jwt_key_2024_min_32_chars
-JWT_REFRESH_SECRET=crushermate_testing_refresh_token_secret_practice_app_2024_min_32
+MONGODB_URI=mongodb+srv://rajenderreddygarlapalli:MacBook%408358%249154@crushermate.utrbdfv.mongodb.net/CrusherMate?retryWrites=true&w=majority
+JWT_SECRET=crushermate_app_super_secret_jwt_key_2024_min_32_chars
+JWT_REFRESH_SECRET=crushermate_refresh_token_secret_practice_app_2024_min_32
 ALLOWED_ORIGINS=http://localhost:3001,http://localhost:8081,http://10.0.2.2:3001
 SEED_DATABASE=true
 AUTO_SEED_ON_START=true
@@ -97,10 +97,10 @@ setup_frontend() {
 API_BASE_URL=http://localhost:3001/api
 ANDROID_API_URL=http://10.0.2.2:3001/api
 IOS_API_URL=http://localhost:3001/api
-AUTH_TOKEN_KEY=crushermate_testing_auth_token
-REFRESH_TOKEN_KEY=crushermate_testing_refresh_token
-USER_DATA_KEY=crushermate_testing_user_data
-STORAGE_PREFIX=crushermate_testing_
+AUTH_TOKEN_KEY=crushermate_auth_token
+REFRESH_TOKEN_KEY=crushermate_refresh_token
+USER_DATA_KEY=crushermate_user_data
+STORAGE_PREFIX=crushermate_
 EOF
     fi
     

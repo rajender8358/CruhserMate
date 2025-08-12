@@ -7,7 +7,11 @@ import React, {
 } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import apiService from '../services/apiService';
-import { getStoredUser, getStoredToken, clearCorruptedData } from '../utils/storageUtils';
+import {
+  getStoredUser,
+  getStoredToken,
+  clearCorruptedData,
+} from '../utils/storageUtils';
 
 const AuthContext = createContext();
 
@@ -27,7 +31,7 @@ export const AuthProvider = ({ children }) => {
   const checkAuthStatus = useCallback(async () => {
     setIsLoading(true);
     try {
-      console.log('🔍 Checking auth status...');
+      // console.log('🔍 Checking auth status...');
       const parsedUser = await getStoredUser();
       const token = await getStoredToken();
 
@@ -38,9 +42,9 @@ export const AuthProvider = ({ children }) => {
         await apiService.setToken(token); // Set token for future requests
         setUser(parsedUser);
         setIsAuthenticated(true);
-        console.log('✅ Auth successful');
+        // console.log('✅ Auth successful');
       } else {
-        console.log('❌ No valid auth data, logging out');
+        // console.log('❌ No valid auth data, logging out');
         await logout(); // Clean up if data is missing
       }
     } catch (error) {

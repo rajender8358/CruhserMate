@@ -9,11 +9,13 @@ import {
   ActivityIndicator,
   Linking,
   Clipboard,
+  Share,
+  Platform,
 } from 'react-native';
+// import RNFS from 'react-native-fs'; // Temporarily disabled due to linking issues
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
-import { API_BASE_URL } from '../services/apiService';
 import theme from '../assets/theme';
 import apiService from '../services/apiService';
 import { formatCurrency } from '../utils/formatting';
@@ -38,6 +40,8 @@ const DashboardScreen = () => {
     endDateObj: null,
   });
   const [allEntries, setAllEntries] = useState([]);
+  const [displayedEntries, setDisplayedEntries] = useState([]);
+  const [displayLimit, setDisplayLimit] = useState(10);
   const [pagination, setPagination] = useState({
     hasNextPage: false,
     currentPage: 1,
@@ -68,36 +72,97 @@ const DashboardScreen = () => {
       // Get the current period data
       const period = selectedDay === 'all' ? 'week' : selectedDay;
       const { startDate, endDate } = getDayDates(selectedDay);
+
+      const organizationId =
+        user?.organizationId || user?.organization?._id || user?.organization;
+
+      if (!organizationId) {
+        throw new Error(
+          'Organization ID not found. Please log out and log in again.',
+        );
+      }
+
       const response = await apiService.generateDownloadableReport({
         startDate,
         endDate,
         format: type,
+        organizationId,
         reportType: 'dashboard',
       });
+
+      // console.log('🔍 Full response from API:', response);
 
       if (!response.success) {
         throw new Error(response.message || 'Failed to generate report');
       }
 
-      const { downloadUrl, fileName, entriesCount, summary } = response.data;
-      try {
-        await Linking.openURL(downloadUrl);
+      // console.log('🔍 Response data:', response.data);
+      const { blob, downloadUrl, fileName, entriesCount, summary } =
+        response.data;
 
-        Alert.alert(
-          `${type.toUpperCase()} Report Generated`,
-          `Your ${type.toUpperCase()} report has been generated with ${entriesCount} entries.\n\n` +
-            `Total Sales: ₹${(summary?.totalSales || 0).toLocaleString(
-              'en-IN',
-            )}\n` +
-            `Raw Stone Cost: ₹${(summary?.totalRawStone || 0).toLocaleString(
-              'en-IN',
-            )}\n` +
-            `Net Profit: ₹${(summary?.netProfit || 0).toLocaleString(
-              'en-IN',
-            )}\n\n` +
-            `The report has been opened in your browser. You can download it from there.`,
-          [{ text: 'OK' }],
-        );
+      if (!blob && !downloadUrl) {
+        console.error('🔍 Response data:', response.data);
+        throw new Error('Download data not received from server');
+      }
+
+      try {
+        if (downloadUrl) {
+          // Open the download URL in Chrome browser
+          try {
+            await Linking.openURL(downloadUrl);
+            Alert.alert(
+              `${type.toUpperCase()} Report Generated`,
+              `Your ${type.toUpperCase()} report is opening in Chrome for download.\n\n` +
+                `The PDF will contain all your data for the selected period.`,
+              [{ text: 'OK' }],
+            );
+          } catch (linkError) {
+            console.error('Failed to open download link:', linkError);
+            Alert.alert(
+              'Download Link Generated',
+              `Your ${type.toUpperCase()} report has been generated.\n\n` +
+                `Please copy this link and open it in Chrome:\n\n${downloadUrl}`,
+              [
+                {
+                  text: 'Copy Link',
+                  onPress: () => Clipboard.setString(downloadUrl),
+                },
+                { text: 'OK' },
+              ],
+            );
+          }
+          // Check if it's a blob URL (starts with blob:)
+          if (downloadUrl.startsWith('blob:')) {
+            // For blob URLs, we can't open them directly in browser
+            // Instead, show a success message
+            Alert.alert(
+              `${type.toUpperCase()} Report Generated`,
+              `Your ${type.toUpperCase()} report has been generated successfully!\n\n` +
+                `The file has been downloaded to your device.`,
+              [{ text: 'OK' }],
+            );
+          } else {
+            // For web URLs, try to open in browser
+            await Linking.openURL(downloadUrl);
+            Alert.alert(
+              `${type.toUpperCase()} Report Generated`,
+              `Your ${type.toUpperCase()} report has been generated with ${
+                entriesCount || 0
+              } entries.\n\n` +
+                `Total Sales: ₹${(summary?.totalSales || 0).toLocaleString(
+                  'en-IN',
+                )}\n` +
+                `Raw Stone Cost: ₹${(
+                  summary?.totalRawStone || 0
+                ).toLocaleString('en-IN')}\n` +
+                `Net Profit: ₹${(summary?.netProfit || 0).toLocaleString(
+                  'en-IN',
+                )}\n\n` +
+                `The report has been opened in your browser. You can download it from there.`,
+              [{ text: 'OK' }],
+            );
+          }
+        }
       } catch (linkError) {
         console.error('Failed to open download link:', linkError);
         Alert.alert(
@@ -125,15 +190,26 @@ const DashboardScreen = () => {
     }
   };
 
+  // Update displayed entries when allEntries changes
+  useEffect(() => {
+    setDisplayedEntries(allEntries.slice(0, displayLimit));
+  }, [allEntries, displayLimit]);
+
   useFocusEffect(
     useCallback(() => {
       if (!checkUserRole()) {
         return;
       }
       fetchDashboardData();
-      fetchEntriesForDay(1); // Fetch first page of entries
-    }, [selectedDay, user]), // Rerun on day or user change
+      // recent entries now come from the new dashboard API response
+    }, [checkUserRole]),
   );
+
+  // Refresh dashboard data whenever the selected day or user changes
+  useEffect(() => {
+    if (!checkUserRole()) return;
+    fetchDashboardData();
+  }, [selectedDay, user]);
 
   const getCurrentWeekDates = () => {
     const today = new Date();
@@ -221,15 +297,96 @@ const DashboardScreen = () => {
         return;
       }
 
-      const response = await apiService.getDashboardSummary(
-        'custom',
-        null,
-        dayDates.startDate,
-        dayDates.endDate,
-      );
+      const response = await apiService.getDashboardSummary({
+        filterType: 'custom',
+        startDate: dayDates.startDate,
+        endDate: dayDates.endDate,
+      });
 
       if (response.success) {
-        setDashboardData(response.data || {});
+        console.log('🔍 Dashboard data:', response.data);
+        const apiData = response.data || {};
+
+        const toNum = v => (typeof v === 'number' ? v : Number(v || 0));
+
+        const sales = apiData.totalSales || apiData.sales || {};
+        const rawStone = apiData.rawStone || {};
+        const expenses = apiData.expenses || {};
+
+        const sumBy = (arr, key) =>
+          (Array.isArray(arr) ? arr : []).reduce(
+            (sum, item) => sum + toNum(item?.[key] || 0),
+            0,
+          );
+
+        const totals = {
+          sales: toNum(
+            sales.totalAmount ?? sumBy(sales.entries, 'totalAmount'),
+          ),
+          raw: toNum(
+            rawStone.totalAmount ?? sumBy(rawStone.entries, 'totalAmount'),
+          ),
+          other: toNum(
+            expenses.totalAmount ?? sumBy(expenses.entries, 'amount'),
+          ),
+        };
+
+        const counts = {
+          sales: toNum(sales.count ?? (sales.entries || []).length),
+          raw: toNum(rawStone.count ?? (rawStone.entries || []).length),
+          other: toNum(expenses.count ?? (expenses.entries || []).length),
+        };
+
+        const normalizedSummary = {
+          totalEntries: counts.sales + counts.raw + counts.other,
+          salesEntries: counts.sales,
+          rawStoneEntries: counts.raw,
+          totalSales: totals.sales,
+          totalRawStone: totals.raw,
+          totalOtherExpenses: totals.other,
+          netProfit: toNum(
+            apiData.netWorth ?? totals.sales - totals.raw - totals.other,
+          ),
+        };
+
+        // Build combined entries list for the selected period from sections
+        const salesEntries = (sales.entries || []).map(e => ({
+          ...e,
+          entryType: 'Sales',
+          createdAt: e.createdAt || e.entryDate,
+          totalAmount: toNum(e.totalAmount),
+        }));
+        const rawEntries = (rawStone.entries || []).map(e => ({
+          ...e,
+          entryType: 'Raw Stone',
+          createdAt: e.createdAt || e.entryDate,
+          totalAmount: toNum(e.totalAmount),
+        }));
+        const expenseEntries = (expenses.entries || []).map(e => ({
+          ...e,
+          entryType: 'Expense',
+          amount: toNum(e.amount),
+          date: e.date || e.createdAt,
+        }));
+
+        const combined = [
+          ...salesEntries,
+          ...rawEntries,
+          ...expenseEntries,
+        ].sort(
+          (a, b) =>
+            new Date(b.date || b.entryDate || b.createdAt) -
+            new Date(a.date || a.entryDate || a.createdAt),
+        );
+
+        setDashboardData({
+          summary: normalizedSummary,
+          topMaterials: [],
+          recentEntries: combined,
+        });
+        setAllEntries(combined);
+        setDisplayLimit(10);
+        setDisplayedEntries(combined.slice(0, 10));
         setDayData(dayDates);
       } else {
         Alert.alert(
@@ -243,6 +400,12 @@ const DashboardScreen = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSeeMore = () => {
+    const newLimit = displayLimit + 10;
+    setDisplayLimit(newLimit);
+    setDisplayedEntries(allEntries.slice(0, newLimit));
   };
 
   const fetchEntriesForDay = async (page = 1) => {
@@ -307,6 +470,10 @@ const DashboardScreen = () => {
       setAllEntries(prev =>
         page === 1 ? allEntries : [...prev, ...allEntries],
       );
+
+      // Update displayed entries based on current limit
+      const newAllEntries = page === 1 ? allEntries : [...prev, ...allEntries];
+      setDisplayedEntries(newAllEntries.slice(0, displayLimit));
       setPagination(
         truckResponse.pagination || {
           hasNextPage: false,
@@ -633,12 +800,23 @@ const DashboardScreen = () => {
         {/* Recent Entries Section */}
         <View style={styles.recentEntriesSection}>
           <Text style={styles.sectionTitle}>Recent Entries</Text>
-          {allEntries.length > 0 ? (
-            allEntries
-              .slice(0, 5)
-              .map((entry, index) => (
+          {displayedEntries.length > 0 ? (
+            <>
+              {displayedEntries.map((entry, index) => (
                 <RecentEntryCard key={entry._id || index} entry={entry} />
-              ))
+              ))}
+              {displayedEntries.length < allEntries.length && (
+                <TouchableOpacity
+                  style={styles.seeMoreButton}
+                  onPress={handleSeeMore}
+                >
+                  <Text style={styles.seeMoreButtonText}>
+                    See More ({allEntries.length - displayedEntries.length}{' '}
+                    more)
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </>
           ) : (
             <View style={styles.emptyState}>
               <Text style={styles.emptyStateText}>No recent entries</Text>
@@ -1091,6 +1269,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
     fontStyle: 'italic',
+  },
+  seeMoreButton: {
+    backgroundColor: theme.COLORS.primary,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    marginTop: 15,
+    alignItems: 'center',
+  },
+  seeMoreButtonText: {
+    color: theme.COLORS.white,
+    fontSize: 16,
+    fontWeight: '600',
   },
   downloadSection: {
     flexDirection: 'row',

@@ -9,7 +9,7 @@ const COLORS = {
   lightGray: '#ECF0F1', // Very light gray
   darkGray: '#7F8C8D', // Medium gray
   text: '#2C3E50', // Dark text
-  placeholder: '#95A5A6', // Placeholder text color
+  placeholder: '#7F8C8D', // Darker placeholder text color for better visibility
   background: '#F8F9FA', // Light background
   inputBorder: '#E8E8E8', // Input border color
   shadow: '#000000', // Shadow color

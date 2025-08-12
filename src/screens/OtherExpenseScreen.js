@@ -264,7 +264,7 @@ const OtherExpenseScreen = ({ navigation, route }) => {
                 value={expensesName}
                 onChangeText={setExpensesName}
                 placeholder="e.g. Fuel, Maintenance, Labor"
-                placeholderTextColor={theme.COLORS.gray}
+                placeholderTextColor={theme.COLORS.placeholder}
                 maxLength={100}
               />
               {validationErrors.expensesName && (
@@ -285,7 +285,7 @@ const OtherExpenseScreen = ({ navigation, route }) => {
                 value={amount}
                 onChangeText={handleAmountChange}
                 placeholder="0"
-                placeholderTextColor={theme.COLORS.gray}
+                placeholderTextColor={theme.COLORS.placeholder}
                 keyboardType="numeric"
               />
               {amount ? (
@@ -310,7 +310,7 @@ const OtherExpenseScreen = ({ navigation, route }) => {
                 value={others}
                 onChangeText={setOthers}
                 placeholder="Additional details about the expense"
-                placeholderTextColor={theme.COLORS.gray}
+                placeholderTextColor={theme.COLORS.placeholder}
                 multiline
                 numberOfLines={3}
                 maxLength={500}

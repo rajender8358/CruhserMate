@@ -32,13 +32,15 @@ const generateCSVContent = (reportData, reportType, filters) => {
   csvRows.push(''); // Empty line
   csvRows.push('SUMMARY');
 
+  const isRawStoneType = type => type === 'Raw Stone' || type === 'RawStone';
+
   const totalSales = reportData
     .filter(r => r.entryType === 'Sales')
-    .reduce((sum, r) => sum + (r.total || 0), 0);
+    .reduce((sum, r) => sum + (Number(r.total) || 0), 0);
 
   const totalRawStone = reportData
-    .filter(r => r.entryType === 'Raw Stone')
-    .reduce((sum, r) => sum + (r.total || 0), 0);
+    .filter(r => isRawStoneType(r.entryType))
+    .reduce((sum, r) => sum + (Number(r.total) || 0), 0);
 
   csvRows.push(`Total Sales,${totalSales}`);
   csvRows.push(`Raw Stone Cost,${totalRawStone}`);
@@ -59,13 +61,15 @@ const generateHTMLContent = (reportData, reportType, filters) => {
     }
   };
 
+  const isRawStoneType = type => type === 'Raw Stone' || type === 'RawStone';
+
   const totalSales = reportData
     .filter(r => r.entryType === 'Sales')
-    .reduce((sum, r) => sum + (r.total || 0), 0);
+    .reduce((sum, r) => sum + (Number(r.total) || 0), 0);
 
   const totalRawStone = reportData
-    .filter(r => r.entryType === 'Raw Stone')
-    .reduce((sum, r) => sum + (r.total || 0), 0);
+    .filter(r => isRawStoneType(r.entryType))
+    .reduce((sum, r) => sum + (Number(r.total) || 0), 0);
 
   const netProfit = totalSales - totalRawStone;
 

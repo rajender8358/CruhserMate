@@ -3,9 +3,15 @@ import { Platform } from 'react-native';
 
 // Production URL - Deployed on Vercel
 const PRODUCTION_URL = 'https://crushermate-backend.vercel.app/api';
+const LOCAL_URL = Platform.select({
+  ios: 'http://localhost:3000/api',
+  android: 'http://10.0.2.2:3000/api',
+  default: 'http://localhost:3000/api',
+});
 
-// Use production URL for all environments
-let API_BASE_URL = PRODUCTION_URL;
+// Use local URL for development
+// const API_BASE_URL = PRODUCTION_URL;
+const API_BASE_URL = LOCAL_URL;
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -64,7 +70,9 @@ class ApiService {
 
   async request(endpoint, options = {}) {
     const url = `${this.baseURL}${endpoint}`;
-    const defaultHeaders = {};
+    const defaultHeaders = {
+      'User-Agent': 'CrusherMate/1.0 (React Native)',
+    };
 
     // Only set Content-Type for JSON requests, not for multipart form data
     if (
@@ -104,9 +112,28 @@ class ApiService {
         timeoutPromise,
       ]);
 
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        console.error('🔍 JSON Parse Error:', jsonError);
+        // Try to get the raw text to see what we're getting
+        const rawText = await response.text();
+        console.error(
+          '🔍 Raw response (first 500 chars):',
+          rawText.substring(0, 500),
+        );
+        throw new Error(`Invalid JSON response: ${jsonError.message}`);
+      }
 
       if (!response.ok) {
+        // Handle authentication errors specifically
+        if (response.status === 401 || response.status === 403) {
+          const authError = new Error(data.message || 'Authentication failed');
+          authError.name = 'AuthError';
+          authError.status = response.status;
+          throw authError;
+        }
         throw new Error(
           data.message || `HTTP error! status: ${response.status}`,
         );
@@ -114,6 +141,10 @@ class ApiService {
 
       return data;
     } catch (error) {
+      // Re-throw auth errors as-is
+      if (error.name === 'AuthError') {
+        throw error;
+      }
       throw error;
     }
   }
@@ -150,19 +181,60 @@ class ApiService {
     return this.request('/auth/profile');
   }
 
-  // App Configuration APIs
-  async getAppConfig() {
-    return this.request('/config/app');
+  // Organization APIs
+  async getOrganizations() {
+    const res = await this.request('/organizations');
+    return {
+      ...res,
+      data: res?.data?.organizations ?? res?.data ?? [],
+    };
   }
 
-  async getMaterialRates() {
-    return this.request('/config/material-rates');
+  // App Configuration APIs
+  async getAppConfig() {
+    const res = await this.request('/config/app');
+    return {
+      ...res,
+      data: res?.data?.config ?? res?.data ?? {},
+    };
+  }
+
+  async getMaterialRates(entryType) {
+    const endpoint = entryType
+      ? `/material-rates?entryType=${encodeURIComponent(entryType)}`
+      : '/material-rates';
+    const res = await this.request(endpoint);
+    // Backend returns an array under data; normalize it
+    return {
+      ...res,
+      data: res?.data ?? [],
+    };
   }
 
   async updateMaterialRates(rates) {
-    return this.request('/config/material-rates', {
-      method: 'PUT',
+    // Fallback bulk update: send as POST (align with spec's POST semantics)
+    return this.request('/material-rates', {
+      method: 'POST',
       body: JSON.stringify(rates),
+    });
+  }
+
+  async updateMaterialRate(rateData) {
+    // Normalize payload for backend compatibility
+    // Backend expects: { materialType, rate }
+    // Accepts client: { entryType, materialType, ratePerUnit | rate | currentRate }
+    const payload = {
+      materialType: rateData.materialType,
+      rate:
+        rateData.rate != null
+          ? rateData.rate
+          : rateData.ratePerUnit != null
+          ? rateData.ratePerUnit
+          : rateData.currentRate,
+    };
+    return this.request('/material-rates', {
+      method: 'POST',
+      body: JSON.stringify(payload),
     });
   }
 
@@ -171,7 +243,7 @@ class ApiService {
     if (imageUri) {
       // Handle image upload
       const formData = new FormData();
-      formData.append('image', {
+      formData.append('truckImage', {
         uri: imageUri,
         type: 'image/jpeg',
         name: 'truck-image.jpg',
@@ -202,10 +274,33 @@ class ApiService {
     const endpoint = queryParams
       ? `/truck-entries?${queryParams}`
       : '/truck-entries';
-    return this.request(endpoint);
+    const res = await this.request(endpoint);
+    return {
+      ...res,
+      data: res?.data?.truckEntries ?? res?.data ?? [],
+      pagination: res?.data?.pagination,
+    };
   }
 
-  async updateTruckEntry(id, entryData) {
+  async updateTruckEntry(id, entryData, imageUri = null) {
+    if (imageUri) {
+      const formData = new FormData();
+      formData.append('truckImage', {
+        uri: imageUri,
+        type: 'image/jpeg',
+        name: 'truck-image.jpg',
+      });
+      Object.keys(entryData).forEach(key => {
+        formData.append(key, entryData[key]);
+      });
+      return this.request(`/truck-entries/${id}`, {
+        method: 'PUT',
+        body: formData,
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+    }
     return this.request(`/truck-entries/${id}`, {
       method: 'PUT',
       body: JSON.stringify(entryData),
@@ -218,48 +313,120 @@ class ApiService {
     });
   }
 
-  // Dashboard APIs
+  async calculateTotal(entryData) {
+    // This is a client-side calculation, but we can add a server endpoint if needed
+    const { units, ratePerUnit } = entryData;
+    return {
+      success: true,
+      data: {
+        total: Math.round(units * ratePerUnit * 100) / 100,
+      },
+    };
+  }
+
+  async validateTruckEntry(entryData) {
+    // This is a client-side validation, but we can add a server endpoint if needed
+    const errors = [];
+
+    if (!entryData.truckNumber?.trim()) {
+      errors.push('Truck number is required');
+    }
+    if (!entryData.truckName?.trim()) {
+      errors.push('Truck name is required');
+    }
+    if (!entryData.entryType?.trim()) {
+      errors.push('Entry type is required');
+    }
+    if (entryData.entryType === 'Sales' && !entryData.materialType?.trim()) {
+      errors.push('Material type is required for Sales entries');
+    }
+    if (!entryData.units || entryData.units <= 0) {
+      errors.push('Valid units are required');
+    }
+    if (!entryData.ratePerUnit || entryData.ratePerUnit <= 0) {
+      errors.push('Valid rate per unit is required');
+    }
+
+    return {
+      success: errors.length === 0,
+      data: {
+        isValid: errors.length === 0,
+        errors: errors,
+        warnings: [],
+      },
+    };
+  }
+
+  // Dashboard APIs (timezone-aware)
   async getDashboardSummary(filters = {}) {
-    const queryParams = new URLSearchParams(filters).toString();
-    const endpoint = queryParams
-      ? `/dashboard/summary?${queryParams}`
-      : '/dashboard/summary';
-    return this.request(endpoint);
+    const tz =
+      filters.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+    const params = new URLSearchParams();
+    if (tz) params.set('timezone', tz);
+
+    // Prefer explicit custom date range
+    if (filters.startDate && filters.endDate) {
+      params.set('filterType', 'custom');
+      params.set('startDate', filters.startDate);
+      params.set('endDate', filters.endDate);
+    } else if (filters.filterType) {
+      // Pass through provided filterType (e.g., today, last_week)
+      params.set('filterType', filters.filterType);
+    } else if (
+      filters.period &&
+      ['today', 'last_week'].includes(filters.period)
+    ) {
+      // Map known period values to filterType if provided
+      params.set('filterType', filters.period);
+    } else {
+      // Default to today if nothing specified
+      params.set('filterType', 'today');
+    }
+
+    const endpoint = `/dashboard/?${params.toString()}`;
+    const res = await this.request(endpoint);
+    return {
+      ...res,
+      data: res?.data ?? {},
+    };
   }
 
   // Report APIs
   async generateReport(exportOptions) {
-    const response = await fetch(`${this.baseURL}/reports/generate`, {
+    const payload = {
+      reportType: exportOptions.reportType || 'dashboard',
+      format: exportOptions.format || 'PDF',
+      startDate: exportOptions.startDate,
+      endDate: exportOptions.endDate,
+      organizationId: exportOptions.organizationId,
+    };
+
+    const res = await this.request('/reports/export', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(this.token && { Authorization: `Bearer ${this.token}` }),
-      },
-      body: JSON.stringify(exportOptions),
+      body: JSON.stringify(payload),
     });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(
-        errorData.message || `HTTP error! status: ${response.status}`,
-      );
-    }
-
-    const responseData = await response.json();
-
     return {
-      success: true,
+      ...res,
       data: {
-        downloadUrl: responseData.downloadUrl,
-        token: responseData.token,
+        downloadUrl: res?.data?.downloadUrl,
+        fileName: res?.data?.fileName,
+        fileSize: res?.data?.fileSize,
+        expiresAt: res?.data?.expiresAt,
+        token: res?.data?.token,
       },
     };
+  }
+
+  async generateDownloadableReport(exportOptions) {
+    return this.generateReport(exportOptions);
   }
 
   async downloadReport(token) {
     const response = await fetch(`${this.baseURL}/reports/download/${token}`, {
       headers: {
-        ...(this.token && { Authorization: `Bearer ${this.token}` }),
+        'Content-Type': 'application/json',
       },
     });
 
@@ -281,7 +448,12 @@ class ApiService {
   async getOtherExpenses(filters = {}) {
     const queryParams = new URLSearchParams(filters).toString();
     const endpoint = queryParams ? `/expenses?${queryParams}` : '/expenses';
-    return this.request(endpoint);
+    const res = await this.request(endpoint);
+    return {
+      ...res,
+      data: res?.data?.expenses ?? res?.data ?? [],
+      pagination: res?.data?.pagination,
+    };
   }
 
   async updateOtherExpense(id, expenseData) {

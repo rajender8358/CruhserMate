@@ -67,17 +67,9 @@ const MaterialRateScreen = () => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [rates, setRates] = useState({
-    'M-Sand': '',
-    'P-Sand': '',
-    'Blue Metal 0.5in': '',
-    'Blue Metal 0.75in': '',
-    Jally: '',
-    Kurunai: '',
-    Mixed: '',
-    'Raw Stone': '',
-  });
+  const [rates, setRates] = useState({});
   const [currentRates, setCurrentRates] = useState({});
+  const [materialEntryTypeMap, setMaterialEntryTypeMap] = useState({});
 
   useEffect(() => {
     if (user?.role !== 'owner') {
@@ -95,57 +87,64 @@ const MaterialRateScreen = () => {
   const fetchMaterialRates = async () => {
     try {
       setLoading(true);
-      const response = await apiService.getMaterialRates();
+      // Fetch Sales and RawStone in parallel
+      const [salesRes, rawRes] = await Promise.all([
+        apiService.getMaterialRates('Sales'),
+        apiService.getMaterialRates('RawStone'),
+      ]);
 
-      if (response.success && response.data && response.data.length > 0) {
+      const combined = [
+        ...(Array.isArray(salesRes?.data) ? salesRes.data : []),
+        ...(Array.isArray(rawRes?.data) ? rawRes.data : []),
+      ];
+
+      if (combined.length > 0) {
         const ratesData = {};
-        response.data.forEach(rate => {
-          ratesData[rate.materialType] = rate.currentRate || rate.rate;
+        const dynamicRates = {};
+        const map = {};
+
+        combined.forEach(item => {
+          const materialName = item.materialType;
+          const current =
+            Number(item.ratePerUnit || item.currentRate || item.rate) || 0;
+          ratesData[materialName] = current || undefined;
+          dynamicRates[materialName] = current ? String(current) : '';
+          map[materialName] = item.entryType;
         });
+
         setCurrentRates(ratesData);
-
-        // Initialize form with current rates
-        setRates({
-          'M-Sand': ratesData['M-Sand']?.toString() || '22000',
-          'P-Sand': ratesData['P-Sand']?.toString() || '20000',
-          'Blue Metal 0.5in':
-            ratesData['Blue Metal 0.5in']?.toString() || '24000',
-          'Blue Metal 0.75in':
-            ratesData['Blue Metal 0.75in']?.toString() || '25000',
-          Jally: ratesData['Jally']?.toString() || '18000',
-          Kurunai: ratesData['Kurunai']?.toString() || '16000',
-          Mixed: ratesData['Mixed']?.toString() || '20000',
-          'Raw Stone': ratesData['Raw Stone']?.toString() || '18000',
-        });
+        setRates(dynamicRates);
+        setMaterialEntryTypeMap(map);
       } else {
-        // If no rates found, use default values and show empty current rates
-
         setCurrentRates({});
-        setRates({
-          'M-Sand': '22000',
-          'P-Sand': '20000',
-          'Blue Metal 0.5in': '24000',
-          'Blue Metal 0.75in': '25000',
-          Jally: '18000',
-          Kurunai: '16000',
-          Mixed: '20000',
-          'Raw Stone': '18000',
-        });
+        setRates({});
+        setMaterialEntryTypeMap({});
       }
     } catch (error) {
       console.error('❌ Error fetching material rates:', error);
-      // Use default values on error
+
+      // Handle authentication errors
+      if (error.name === 'AuthError') {
+        Alert.alert(
+          'Authentication Error',
+          'Please log in again to continue.',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                // This will trigger logout in AuthContext
+                navigation.navigate('Login');
+              },
+            },
+          ],
+        );
+        return;
+      }
+
+      // Use empty values on error
       setCurrentRates({});
-      setRates({
-        'M-Sand': '22000',
-        'P-Sand': '20000',
-        'Blue Metal 0.5in': '24000',
-        'Blue Metal 0.75in': '25000',
-        Jally: '18000',
-        Kurunai: '16000',
-        Mixed: '20000',
-        'Raw Stone': '18000',
-      });
+      setRates({});
+      setMaterialEntryTypeMap({});
     } finally {
       setLoading(false);
     }
@@ -165,8 +164,8 @@ const MaterialRateScreen = () => {
     Object.entries(rates).forEach(([materialType, rate]) => {
       if (!rate || rate === '') {
         errors.push(`${materialType} rate is required`);
-      } else if (parseFloat(rate) <= 0) {
-        errors.push(`${materialType} rate must be greater than 0`);
+      } else if (parseFloat(rate) < 0) {
+        errors.push(`${materialType} rate cannot be negative`);
       }
     });
     return errors;
@@ -181,18 +180,38 @@ const MaterialRateScreen = () => {
 
     try {
       setSaving(true);
-      const promises = Object.entries(rates).map(([materialType, rate]) =>
-        apiService.updateMaterialRate({
+      const promises = Object.entries(rates).map(([materialType, rate]) => {
+        const entryType = materialEntryTypeMap[materialType] || 'Sales';
+        return apiService.updateMaterialRate({
+          entryType,
           materialType,
-          rate: parseFloat(rate),
-        }),
-      );
+          ratePerUnit: parseFloat(rate),
+        });
+      });
 
       await Promise.all(promises);
       Alert.alert('Success', 'Material rates updated successfully!');
       fetchMaterialRates(); // Refresh the data
     } catch (error) {
       console.error('Error updating rates:', error);
+
+      // Handle authentication errors
+      if (error.name === 'AuthError') {
+        Alert.alert(
+          'Authentication Error',
+          'Please log in again to continue.',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                navigation.navigate('Login');
+              },
+            },
+          ],
+        );
+        return;
+      }
+
       Alert.alert('Error', 'Failed to update material rates');
     } finally {
       setSaving(false);
@@ -216,7 +235,7 @@ const MaterialRateScreen = () => {
       <View style={styles.header}>
         <View style={styles.titleContainer}>
           <Text style={styles.title}>Material Rates</Text>
-          <Text style={styles.subtitle}>Set prices for materials</Text>
+          <Text style={styles.subtitle}>Set prices for your organization</Text>
         </View>
         <TouchableOpacity
           style={styles.backButton}
@@ -239,77 +258,26 @@ const MaterialRateScreen = () => {
           keyboardDismissMode="none"
           contentContainerStyle={styles.scrollContent}
         >
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Material Rates</Text>
-            <Text style={styles.sectionDescription}>
-              Set the current market rates for each material type. These rates
-              will be used to auto-fill prices when creating truck entries. You
-              can edit the rates below and save them.
-            </Text>
-          </View>
-
           {/* Rate Inputs */}
           <View style={styles.ratesContainer}>
-            <RateInput
-              materialType="M-Sand"
-              label="M-Sand"
-              currentRate={currentRates['M-Sand']}
-              value={rates['M-Sand']}
-              onChangeText={value => handleRateChange('M-Sand', value)}
-            />
-            <RateInput
-              materialType="P-Sand"
-              label="P-Sand"
-              currentRate={currentRates['P-Sand']}
-              value={rates['P-Sand']}
-              onChangeText={value => handleRateChange('P-Sand', value)}
-            />
-            <RateInput
-              materialType="Blue Metal 0.5in"
-              label="Blue Metal 0.5in"
-              currentRate={currentRates['Blue Metal 0.5in']}
-              value={rates['Blue Metal 0.5in']}
-              onChangeText={value =>
-                handleRateChange('Blue Metal 0.5in', value)
-              }
-            />
-            <RateInput
-              materialType="Blue Metal 0.75in"
-              label="Blue Metal 0.75in"
-              currentRate={currentRates['Blue Metal 0.75in']}
-              value={rates['Blue Metal 0.75in']}
-              onChangeText={value =>
-                handleRateChange('Blue Metal 0.75in', value)
-              }
-            />
-            <RateInput
-              materialType="Jally"
-              label="Jally"
-              currentRate={currentRates['Jally']}
-              value={rates['Jally']}
-              onChangeText={value => handleRateChange('Jally', value)}
-            />
-            <RateInput
-              materialType="Kurunai"
-              label="Kurunai"
-              currentRate={currentRates['Kurunai']}
-              value={rates['Kurunai']}
-              onChangeText={value => handleRateChange('Kurunai', value)}
-            />
-            <RateInput
-              materialType="Mixed"
-              label="Mixed"
-              currentRate={currentRates['Mixed']}
-              value={rates['Mixed']}
-              onChangeText={value => handleRateChange('Mixed', value)}
-            />
-            <RateInput
-              materialType="Raw Stone"
-              label="Raw Stone"
-              currentRate={currentRates['Raw Stone']}
-              value={rates['Raw Stone']}
-              onChangeText={value => handleRateChange('Raw Stone', value)}
-            />
+            {Object.keys(rates).length > 0 ? (
+              Object.keys(rates).map((materialType, index) => (
+                <RateInput
+                  key={materialType}
+                  materialType={materialType}
+                  label={materialType}
+                  currentRate={currentRates[materialType]}
+                  value={rates[materialType]}
+                  onChangeText={value => handleRateChange(materialType, value)}
+                />
+              ))
+            ) : (
+              <View style={styles.noDataContainer}>
+                <Text style={styles.noDataText}>
+                  No material rates found. Please contact your administrator.
+                </Text>
+              </View>
+            )}
           </View>
 
           {/* Save Button */}
@@ -321,7 +289,7 @@ const MaterialRateScreen = () => {
             {saving ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Text style={styles.saveButtonText}>💾 Save Rates</Text>
+              <Text style={styles.saveButtonText}>Save Rates</Text>
             )}
           </TouchableOpacity>
 
@@ -330,8 +298,8 @@ const MaterialRateScreen = () => {
             <Text style={styles.infoTitle}>ℹ️ Information</Text>
             <Text style={styles.infoText}>
               • Rates are used to auto-fill prices when creating truck entries
-              {'\n'}• Changes take effect immediately{'\n'}• All users in your
-              organization will see these rates{'\n'}• Rates are stored per
+              {'\n'}• Changes take effect immediately
+              {'\n'}• These rates are saved and loaded based on your
               organization
             </Text>
           </View>
@@ -505,6 +473,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: theme.COLORS.darkGray,
     lineHeight: 20,
+  },
+  noDataContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+  },
+  noDataText: {
+    fontSize: 16,
+    color: theme.COLORS.darkGray,
+    textAlign: 'center',
   },
 });
 

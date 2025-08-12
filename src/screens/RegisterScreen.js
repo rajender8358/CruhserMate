@@ -28,11 +28,15 @@ const RegisterScreen = ({ navigation }) => {
     const fetchOrganizations = async () => {
       try {
         const response = await apiService.getOrganizations();
-        // Handle the new API response format
-        const orgs = response.data || response;
-        setOrganizations(orgs);
-        if (orgs && orgs.length > 0) {
-          setSelectedOrganization(orgs[0]._id);
+        const raw = response.data || [];
+        const normalized = Array.isArray(raw)
+          ? raw
+              .filter(o => o && (o._id || o.id) && o.name)
+              .map(o => ({ _id: o._id || o.id, name: o.name }))
+          : [];
+        setOrganizations(normalized);
+        if (normalized.length > 0) {
+          setSelectedOrganization(normalized[0]._id);
         }
       } catch (error) {
         console.error('Error fetching organizations:', error);

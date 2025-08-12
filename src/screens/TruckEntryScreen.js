@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -21,6 +21,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import theme from '../assets/theme';
 import apiService from '../services/apiService';
 import { APP_ROUTES } from '../navigations/Routes';
+import { formatCurrency } from '../utils/formatting';
 
 const { width } = Dimensions.get('window');
 
@@ -69,22 +70,39 @@ const TruckEntryScreen = ({ navigation, route }) => {
   const [validationErrors, setValidationErrors] = useState({});
   const [userRole, setUserRole] = useState('user');
 
-  // Get dynamic data from app config
-  const allMaterialTypes = [
-    { value: 'M-Sand', label: 'M-Sand' },
-    { value: 'P-Sand', label: 'P-Sand' },
-    { value: 'Blue Metal 0.5in', label: 'Blue Metal 0.5in' },
-    { value: 'Blue Metal 0.75in', label: 'Blue Metal 0.75in' },
-    { value: 'Jally', label: 'Jally' },
-    { value: 'Kurunai', label: 'Kurunai' },
-    { value: 'Mixed', label: 'Mixed' },
+  // Material rates fetched from backend by entry type
+  const [salesOptions, setSalesOptions] = useState([]); // [{value,label}]
+  const [salesRatesMap, setSalesRatesMap] = useState({}); // { material: rate }
+  const [rawStoneRate, setRawStoneRate] = useState(null);
+
+  // Get dynamic data from app config with robust fallbacks
+  const defaultMaterialTypes = [
+    { value: 'M Sand', label: 'M Sand' },
+    { value: 'P Sand', label: 'P Sand' },
+    { value: '12mm Jelly', label: '12mm Jelly' },
+    { value: '20mm Jelly', label: '20mm Jelly' },
+    { value: '40mm Jelly', label: '40mm Jelly' },
     { value: 'Raw Stone', label: 'Raw Stone' },
   ];
 
+  const derivedMaterialTypes = Object.keys(appConfig?.materialRates || {})
+    .filter(name => !!name)
+    .map(name => ({ value: name, label: name }));
+
+  const allMaterialTypes =
+    Array.isArray(appConfig?.materialTypes) && appConfig.materialTypes.length
+      ? appConfig.materialTypes
+      : derivedMaterialTypes.length
+      ? derivedMaterialTypes
+      : defaultMaterialTypes;
+
   // Filter material types based on entry type
+  // Prefer options fetched from API for Sales; Raw Stone has no material type
   const materialTypes =
     entryType === 'Sales'
-      ? allMaterialTypes.filter(type => type.value !== 'Raw Stone')
+      ? salesOptions.length > 0
+        ? salesOptions
+        : allMaterialTypes.filter(t => t.value && t.value !== 'Raw Stone')
       : allMaterialTypes.filter(type => type.value === 'Raw Stone');
 
   // Ensure entry types are always available
@@ -95,24 +113,23 @@ const TruckEntryScreen = ({ navigation, route }) => {
 
   const entryTypes = appConfig?.entryTypes || defaultEntryTypes;
 
-  // Fallback material rates if API doesn't return them
-  const fallbackMaterialRates = {
-    'M-Sand': { currentRate: 22000 },
-    'P-Sand': { currentRate: 20000 },
-    'Blue Metal 0.5in': { currentRate: 24000 },
-    'Blue Metal 0.75in': { currentRate: 25000 },
-    Jally: { currentRate: 18000 },
-    Kurunai: { currentRate: 16000 },
-    Mixed: { currentRate: 20000 },
-    'Raw Stone': { currentRate: 18000 },
-  };
-
-  const materialRates = fallbackMaterialRates;
+  const materialRates = appConfig?.materialRates || {};
 
   useEffect(() => {
     checkAllPermissions();
     loadAppConfiguration();
+    fetchMaterialRatesFromAPI();
   }, []);
+
+  // Refresh configuration when screen comes into focus
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      loadAppConfiguration();
+      fetchMaterialRatesFromAPI();
+    });
+
+    return unsubscribe;
+  }, [navigation]);
 
   const loadAppConfiguration = async () => {
     try {
@@ -123,7 +140,46 @@ const TruckEntryScreen = ({ navigation, route }) => {
         setErrorMessage('Failed to load app settings. Please try again.');
       }
     } catch (error) {
+      console.error('❌ Error loading app config:', error);
+
+      // Handle authentication errors
+      if (error.name === 'AuthError') {
+        setErrorMessage('Authentication failed. Please log in again.');
+        // You might want to navigate to login here
+        return;
+      }
+
       setErrorMessage('Failed to load app settings. Please try again.');
+    }
+  };
+
+  const fetchMaterialRatesFromAPI = async () => {
+    try {
+      const [salesRes, rawRes] = await Promise.all([
+        apiService.getMaterialRates('Sales'),
+        apiService.getMaterialRates('RawStone'),
+      ]);
+
+      const salesData = Array.isArray(salesRes?.data) ? salesRes.data : [];
+      const options = salesData.map(item => ({
+        value: item.materialType,
+        label: item.materialType,
+      }));
+      const ratesMap = salesData.reduce((acc, item) => {
+        const rate = Number(item.ratePerUnit);
+        if (!isNaN(rate)) acc[item.materialType] = rate;
+        return acc;
+      }, {});
+      setSalesOptions(options);
+      setSalesRatesMap(ratesMap);
+
+      const rawRate =
+        Array.isArray(rawRes?.data) && rawRes.data[0]
+          ? Number(rawRes.data[0].ratePerUnit)
+          : null;
+      setRawStoneRate(!isNaN(rawRate) ? rawRate : null);
+    } catch (e) {
+      // Keep silent and rely on appConfig fallback
     }
   };
 
@@ -131,26 +187,21 @@ const TruckEntryScreen = ({ navigation, route }) => {
     // This effect handles logic specifically for the Entry Type selection.
     if (entryType === 'Raw Stone') {
       // If Raw Stone is selected, set its price immediately and clear material type.
-      if (materialRates['Raw Stone']) {
-        const rate = materialRates['Raw Stone'].currentRate;
-        setRatePerUnit(rate.toString());
-      }
+      if (rawStoneRate != null) setRatePerUnit(String(rawStoneRate));
       setMaterialType('');
     } else if (entryType === 'Sales') {
       // If Sales is selected, clear the rate until a material is chosen.
       setRatePerUnit('');
     }
-  }, [entryType, materialRates]);
+  }, [entryType, rawStoneRate]);
 
   useEffect(() => {
     // This effect handles logic specifically for the Material Type selection in Sales.
     if (entryType === 'Sales' && materialType) {
-      if (materialRates[materialType]) {
-        const rate = materialRates[materialType].currentRate;
-        setRatePerUnit(rate.toString());
-      }
+      const rate = salesRatesMap[materialType];
+      if (rate != null) setRatePerUnit(String(rate));
     }
-  }, [materialType, entryType, materialRates]);
+  }, [materialType, entryType, salesRatesMap]);
 
   // Calculate total amount when units or rate changes using backend API
   useEffect(() => {
@@ -514,10 +565,16 @@ const TruckEntryScreen = ({ navigation, route }) => {
       const today = new Date();
       const todayString = today.toISOString().split('T')[0];
 
+      // Normalize entry type for backend
+      const backendEntryType =
+        (entryType || '').trim().toLowerCase() === 'raw stone'
+          ? 'RawStone'
+          : entryType;
+
       const entryData = {
         truckNumber: truckNumber.toUpperCase(),
         truckName: truckName.trim(),
-        entryType,
+        entryType: backendEntryType,
         materialType: entryType === 'Sales' ? materialType : null,
         units: parseFloat(units),
         ratePerUnit: parseFloat(ratePerUnit),
@@ -911,7 +968,8 @@ const TruckEntryScreen = ({ navigation, route }) => {
         {/* Rate per Unit */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>
-            Rate per Unit {entryType === 'Sales' ? '(Auto-filled)' : ''}
+            Rate per Unit{' '}
+            {entryType === 'Sales' ? '(Auto-filled, editable)' : ''}
           </Text>
           <View style={styles.inputWrapper}>
             <TextInput
@@ -931,12 +989,13 @@ const TruckEntryScreen = ({ navigation, route }) => {
               }}
               keyboardType="numeric"
               maxLength={10}
-              editable={entryType !== 'Sales' || !materialType}
+              editable={true}
             />
           </View>
           {entryType === 'Sales' && materialType && (
             <Text style={styles.autoFillNote}>
-              Rate auto-filled based on current market price for {materialType}
+              Rate auto-filled based on current market price for {materialType}.
+              You can edit this value.
             </Text>
           )}
         </View>

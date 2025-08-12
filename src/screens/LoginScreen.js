@@ -26,9 +26,11 @@ const LoginScreen = ({ navigation }) => {
   const [successMessage, setSuccessMessage] = useState('');
 
   const validateUsername = username => {
-    // Username should be 3-15 characters, alphanumeric and underscore only
+    // Allow both username format (3-15 characters, alphanumeric and underscore only)
+    // and email format (standard email validation)
     const usernameRegex = /^[a-zA-Z0-9_]{3,15}$/;
-    return usernameRegex.test(username);
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return usernameRegex.test(username) || emailRegex.test(username);
   };
 
   const clearMessages = () => {
@@ -38,6 +40,7 @@ const LoginScreen = ({ navigation }) => {
 
   const handleLogin = async () => {
     // Clear previous messages
+    console.log('Clearing messages');
     clearMessages();
 
     // Validate empty fields
@@ -50,10 +53,11 @@ const LoginScreen = ({ navigation }) => {
       return;
     }
 
-    // Validate username format
+    // Validate username/email format
     if (!validateUsername(username)) {
+      console.log('Invalid username/email format');
       setErrorMessage(
-        'Please enter a valid username (3-15 characters, letters, numbers, underscore only)',
+        'Please enter a valid username (3-15 characters, letters, numbers, underscore only) or email address',
       );
       return;
     }
@@ -67,13 +71,16 @@ const LoginScreen = ({ navigation }) => {
     setLoading(true);
     setErrorMessage('');
     try {
-      const response = await apiService.login(username, password);
+      console.log('Logging in');
+      const response = await apiService.login({ username, password });
       if (response.success) {
         login(response.data.user, response.data.token);
       } else {
+        console.log('Login failed');
         setErrorMessage(response.message || 'Login failed');
       }
     } catch (error) {
+      console.log('Error logging in', error);
       setErrorMessage(error.message || 'An error occurred');
     } finally {
       setLoading(false);
@@ -170,11 +177,11 @@ const LoginScreen = ({ navigation }) => {
           </View>
 
           {/* Forgot Password */}
-          <View style={styles.forgotPasswordContainer}>
+          {/* <View style={styles.forgotPasswordContainer}>
             <TouchableOpacity onPress={handleForgotPassword}>
               <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
             </TouchableOpacity>
-          </View>
+          </View> */}
         </View>
 
         {/* Login Button */}

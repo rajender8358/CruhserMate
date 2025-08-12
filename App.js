@@ -12,16 +12,12 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import MainNavigator from './src/navigations/MainNavigator';
 import apiService from './src/services/apiService';
 import { AuthProvider } from './src/context/AuthContext';
-import { resetAppData } from './src/utils/storageUtils';
 
 const App = () => {
   useEffect(() => {
     // Initialize API service on app startup
     const initializeApp = async () => {
       try {
-        // TEMPORARY: Force clear storage to fix JSON parsing issues
-        await resetAppData();
-
         await apiService.initialize();
       } catch (error) {
         // Handle initialization error silently

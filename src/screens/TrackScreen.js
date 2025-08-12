@@ -16,7 +16,7 @@ import apiService from '../services/apiService';
 import { useAuth } from '../context/AuthContext';
 import { APP_ROUTES } from '../navigations/Routes';
 import { getStoredUser } from '../utils/storageUtils';
-import { formatCurrency } from '../utils/formatting';
+import { formatCurrency, formatISTTime12h } from '../utils/formatting';
 
 const { width } = Dimensions.get('window');
 
@@ -106,6 +106,7 @@ const TrackScreen = ({ navigation }) => {
       // Process truck entries
       if (truckResponse.success) {
         const truckEntries = truckResponse.data || [];
+        console.log('truckEntries', truckEntries);
         const validTruckEntries = Array.isArray(truckEntries)
           ? truckEntries.filter(entry => entry && typeof entry === 'object')
           : [];
@@ -117,6 +118,7 @@ const TrackScreen = ({ navigation }) => {
       // Process other expenses
       if (otherExpensesResponse.success) {
         const otherExpenses = otherExpensesResponse.data || [];
+        console.log('otherExpenses', otherExpenses);
         const validOtherExpenses = Array.isArray(otherExpenses)
           ? otherExpenses.filter(
               expense => expense && typeof expense === 'object',
@@ -128,7 +130,7 @@ const TrackScreen = ({ navigation }) => {
           ...expense,
           entryType: 'Expense',
           materialType: 'Expense',
-          amount: expense.amount,
+          amount: expense.totalAmount ?? expense.amount,
           expensesName: expense.expensesName,
           others: expense.others,
           date: expense.date,
@@ -337,7 +339,7 @@ const TrackScreen = ({ navigation }) => {
     if (!Array.isArray(todayEntries)) return 0;
     return todayEntries.reduce((sum, entry) => {
       if (!entry || typeof entry !== 'object') return sum;
-      const amount = entry?.totalAmount || 0;
+      const amount = Number(entry?.totalAmount) || 0;
       return sum + amount;
     }, 0);
   };
@@ -350,11 +352,13 @@ const TrackScreen = ({ navigation }) => {
     ).length;
   };
 
+  const isRawStoneType = type => type === 'Raw Stone' || type === 'RawStone';
+
   const getRawStoneCount = () => {
     if (!Array.isArray(todayEntries)) return 0;
     return todayEntries.filter(
       entry =>
-        entry && typeof entry === 'object' && entry?.entryType === 'Raw Stone',
+        entry && typeof entry === 'object' && isRawStoneType(entry?.entryType),
     ).length;
   };
 
@@ -376,17 +380,8 @@ const TrackScreen = ({ navigation }) => {
     const isLastCard = index === todayEntries.length - 1;
     const isOtherExpense = entry.entryType === 'Expense';
 
-    const formatTime = timeString => {
-      if (!timeString || typeof timeString !== 'string') return '';
-      const [hour, minute] = timeString.split(':');
-      const hourNum = parseInt(hour, 10);
-      if (isNaN(hourNum)) return '';
-
-      // Convert 24-hour format to 12-hour format
-      const ampm = hourNum >= 12 ? 'PM' : 'AM';
-      const formattedHour = hourNum % 12 || 12;
-      return `${formattedHour}:${minute || '00'} ${ampm}`;
-    };
+    const formatTime = (timeString, dateString) =>
+      formatISTTime12h(timeString, dateString);
 
     // Render Other Expense card
     if (isOtherExpense) {
@@ -402,12 +397,7 @@ const TrackScreen = ({ navigation }) => {
                 {entry?.expensesName || 'Unknown Expense'}
               </Text>
               <Text style={styles.entryTime}>
-                {entry?.date
-                  ? new Date(entry.date).toLocaleTimeString([], {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })
-                  : ''}
+                {entry?.date ? formatTime(entry.entryTime, entry.date) : ''}
               </Text>
             </View>
             <View style={styles.entryActions}>
@@ -470,7 +460,9 @@ const TrackScreen = ({ navigation }) => {
             {entry?.truckName && (
               <Text style={styles.truckName}>{entry.truckName}</Text>
             )}
-            <Text style={styles.entryTime}>{formatTime(entry?.entryTime)}</Text>
+            <Text style={styles.entryTime}>
+              {formatTime(entry?.entryTime, entry?.entryDate)}
+            </Text>
           </View>
           <View style={styles.entryActions}>
             <TouchableOpacity
@@ -552,15 +544,15 @@ const TrackScreen = ({ navigation }) => {
     // Calculate totals for each type
     const salesTotal = todayEntries
       .filter(entry => entry?.entryType === 'Sales')
-      .reduce((sum, entry) => sum + (entry?.totalAmount || 0), 0);
+      .reduce((sum, entry) => sum + (Number(entry?.totalAmount) || 0), 0);
 
     const rawStoneTotal = todayEntries
-      .filter(entry => entry?.entryType === 'Raw Stone')
-      .reduce((sum, entry) => sum + (entry?.totalAmount || 0), 0);
+      .filter(entry => isRawStoneType(entry?.entryType))
+      .reduce((sum, entry) => sum + (Number(entry?.totalAmount) || 0), 0);
 
     const otherExpensesTotal = todayEntries
       .filter(entry => entry?.entryType === 'Expense')
-      .reduce((sum, entry) => sum + (entry?.amount || 0), 0);
+      .reduce((sum, entry) => sum + (Number(entry?.amount) || 0), 0);
 
     // Calculate Net Worth (Sales - Raw Stone - Other Expenses)
     const netWorth = salesTotal - rawStoneTotal - otherExpensesTotal;
@@ -1098,6 +1090,7 @@ const styles = StyleSheet.create({
   entryTypeText: {
     fontSize: 12,
     fontWeight: '600',
+    color: theme.COLORS.text,
   },
   salesText: {
     color: '#2E7D32',
