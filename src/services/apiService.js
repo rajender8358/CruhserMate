@@ -1,17 +1,8 @@
 // API Configuration
 import { Platform } from 'react-native';
 
-// Production URL - Deployed on Vercel
-const PRODUCTION_URL = 'https://crushermate-backend.vercel.app/api';
-const LOCAL_URL = Platform.select({
-  ios: 'http://localhost:3000/api',
-  android: 'http://10.0.2.2:3000/api',
-  default: 'http://localhost:3000/api',
-});
-
-// Use local URL for development
-// const API_BASE_URL = PRODUCTION_URL;
-const API_BASE_URL = LOCAL_URL;
+const PRODUCTION_URL = 'http://18.215.242.150:3000/api/';
+const API_BASE_URL = PRODUCTION_URL;
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -20,6 +11,15 @@ class ApiService {
     this.baseURL = API_BASE_URL;
     this.token = null;
     this.initialized = false;
+  }
+
+  getAbsoluteBaseURL() {
+    const base = this.baseURL || '';
+    if (typeof base === 'string' && base.startsWith('http')) {
+      return base;
+    }
+    // Fallback to production if base is missing or relative
+    return PRODUCTION_URL;
   }
 
   async initialize() {
@@ -69,6 +69,14 @@ class ApiService {
   }
 
   async request(endpoint, options = {}) {
+    // Ensure token is loaded from storage before first request
+    if (!this.initialized) {
+      try {
+        await this.initialize();
+      } catch (e) {
+        // proceed; initialize handles its own errors
+      }
+    }
     const url = `${this.baseURL}${endpoint}`;
     const defaultHeaders = {
       'User-Agent': 'CrusherMate/1.0 (React Native)',
@@ -301,9 +309,34 @@ class ApiService {
         },
       });
     }
+    // Map client fields to backend expected fields for update API
+    const payload = {
+      vehicleNumber: entryData.truckNumber || entryData.vehicleNumber,
+      truckNumber: entryData.truckNumber || entryData.truckNo, // compatibility
+      materialType: entryData.materialType,
+      entryType:
+        (entryData.entryType || '') === 'Raw Stone'
+          ? 'RawStone'
+          : entryData.entryType,
+      // Send both legacy and new field names to ensure server updates correctly
+      quantity:
+        entryData.units != null ? Number(entryData.units) : entryData.quantity,
+      units:
+        entryData.units != null ? Number(entryData.units) : entryData.units,
+      rate:
+        entryData.ratePerUnit != null
+          ? Number(entryData.ratePerUnit)
+          : entryData.rate,
+      ratePerUnit:
+        entryData.ratePerUnit != null
+          ? Number(entryData.ratePerUnit)
+          : entryData.ratePerUnit,
+      customerName: entryData.truckName || entryData.customerName,
+      remarks: entryData.notes || entryData.remarks,
+    };
     return this.request(`/truck-entries/${id}`, {
       method: 'PUT',
-      body: JSON.stringify(entryData),
+      body: JSON.stringify(payload),
     });
   }
 
@@ -392,49 +425,28 @@ class ApiService {
     };
   }
 
-  // Report APIs
-  async generateReport(exportOptions) {
-    const payload = {
-      reportType: exportOptions.reportType || 'dashboard',
-      format: exportOptions.format || 'PDF',
-      startDate: exportOptions.startDate,
-      endDate: exportOptions.endDate,
-      organizationId: exportOptions.organizationId,
-    };
+  // Deprecated report APIs removed (handled via business-reports URLs)
 
-    const res = await this.request('/reports/export', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-
-    return {
-      ...res,
-      data: {
-        downloadUrl: res?.data?.downloadUrl,
-        fileName: res?.data?.fileName,
-        fileSize: res?.data?.fileSize,
-        expiresAt: res?.data?.expiresAt,
-        token: res?.data?.token,
-      },
-    };
-  }
-
-  async generateDownloadableReport(exportOptions) {
-    return this.generateReport(exportOptions);
-  }
-
-  async downloadReport(token) {
-    const response = await fetch(`${this.baseURL}/reports/download/${token}`, {
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Download failed! status: ${response.status}`);
-    }
-
-    return response.blob();
+  getBusinessReportUrl(
+    format,
+    { startDate, endDate, organizationId, includeDetails = true, type },
+  ) {
+    const safeFormat =
+      format && String(format).toLowerCase() === 'csv' ? 'csv' : 'pdf';
+    const params = new URLSearchParams();
+    if (startDate) params.set('startDate', startDate);
+    if (endDate) params.set('endDate', endDate);
+    if (organizationId) params.set('organizationId', organizationId);
+    if (includeDetails != null)
+      params.set('includeDetails', includeDetails ? 'true' : 'false');
+    // CSV requires a type parameter; default to 'all'
+    if (safeFormat === 'csv') params.set('type', type || 'all');
+    // Use platform-aware base URL (iOS uses localhost, Android uses 10.0.2.2)
+    const absoluteBase = this.getAbsoluteBaseURL();
+    return `${absoluteBase.replace(
+      /\/$/,
+      '',
+    )}/business-reports/${safeFormat}?${params.toString()}`;
   }
 
   // Expenses APIs
@@ -451,15 +463,33 @@ class ApiService {
     const res = await this.request(endpoint);
     return {
       ...res,
-      data: res?.data?.expenses ?? res?.data ?? [],
+      data: (res?.data?.expenses ?? res?.data ?? []).map(e => {
+        const anyId = e?._id || e?.id || e?.expenseId || e?.expenseID;
+        const normalizedId =
+          typeof anyId === 'object'
+            ? anyId?.$oid || anyId?.id || String(anyId)
+            : anyId;
+        return {
+          ...e,
+          _id: normalizedId,
+          id: normalizedId,
+        };
+      }),
       pagination: res?.data?.pagination,
     };
   }
 
   async updateOtherExpense(id, expenseData) {
+    const payload = {
+      description: expenseData.description || expenseData.others,
+      amount:
+        expenseData.amount != null ? Number(expenseData.amount) : undefined,
+      category: expenseData.category || expenseData.expensesName,
+      date: expenseData.date || new Date().toISOString(),
+    };
     return this.request(`/expenses/${id}`, {
       method: 'PUT',
-      body: JSON.stringify(expenseData),
+      body: JSON.stringify(payload),
     });
   }
 

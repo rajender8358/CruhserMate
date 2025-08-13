@@ -12,7 +12,6 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
-  ActivityIndicator,
   TextInput,
   KeyboardAvoidingView,
   Platform,
@@ -23,6 +22,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import theme from '../assets/theme';
 import apiService from '../services/apiService';
+import Loader from '../components/Loader';
 
 // Separate RateInput component to prevent re-renders
 const RateInput = React.forwardRef(
@@ -221,10 +221,7 @@ const MaterialRateScreen = () => {
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={theme.COLORS.primary} />
-          <Text style={styles.loadingText}>Loading material rates...</Text>
-        </View>
+        <Loader variant="fullscreen" size="large" />
       </SafeAreaView>
     );
   }
@@ -287,7 +284,11 @@ const MaterialRateScreen = () => {
             disabled={saving}
           >
             {saving ? (
-              <ActivityIndicator color="#FFFFFF" />
+              <Loader
+                size="small"
+                color={theme.COLORS.white}
+                variant="inline"
+              />
             ) : (
               <Text style={styles.saveButtonText}>Save Rates</Text>
             )}

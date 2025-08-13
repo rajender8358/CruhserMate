@@ -7,13 +7,13 @@ import {
   TextInput,
   ScrollView,
   Alert,
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import theme from '../assets/theme';
 import apiService from '../services/apiService';
+import Loader from '../components/Loader';
 import { APP_ROUTES } from '../navigations/Routes';
 
 const OtherExpenseScreen = ({ navigation, route }) => {
@@ -41,6 +41,22 @@ const OtherExpenseScreen = ({ navigation, route }) => {
     // Check authentication status
     checkAuthentication();
   }, []);
+
+  // If we just updated an expense, refresh the Track screen when navigating back
+  useEffect(() => {
+    if (!editMode) return;
+    const markUpdated = async () => {
+      try {
+        if (expenseData?._id || expenseData?.id) {
+          await AsyncStorage.setItem(
+            'lastUpdatedExpenseId',
+            expenseData._id || expenseData.id,
+          );
+        }
+      } catch {}
+    };
+    markUpdated();
+  }, [editMode, expenseData]);
 
   const checkAuthentication = async () => {
     try {
@@ -104,21 +120,35 @@ const OtherExpenseScreen = ({ navigation, route }) => {
       const token = await AsyncStorage.getItem('userToken');
       const userData = await AsyncStorage.getItem('user');
 
-      const expenseData = {
-        expensesName: expensesName.trim(),
+      const payload = {
+        // Support backend schema: description/category/amount/date
+        description: others.trim(),
+        category: expensesName.trim(),
         amount: parseFloat(amount),
-        others: others.trim(),
         date: new Date().toISOString(),
+        // Keep original fields too for compatibility
+        expensesName: expensesName.trim(),
+        others: others.trim(),
       };
 
       let response;
       if (editMode) {
-        response = await apiService.updateOtherExpense(
-          expenseData._id,
-          expenseData,
-        );
+        const rawId =
+          route?.params?.expenseData?._id ||
+          route?.params?.expenseData?.id ||
+          route?.params?.expenseData?.expenseId ||
+          route?.params?.expenseData?.expenseID;
+        const id =
+          typeof rawId === 'object'
+            ? rawId?.$oid || rawId?.id || String(rawId)
+            : rawId;
+        if (!id) {
+          setErrorMessage('Missing expense ID for update');
+          return;
+        }
+        response = await apiService.updateOtherExpense(id, payload);
       } else {
-        response = await apiService.createOtherExpense(expenseData);
+        response = await apiService.createOtherExpense(payload);
       }
 
       if (response.success) {
@@ -333,7 +363,11 @@ const OtherExpenseScreen = ({ navigation, route }) => {
             >
               {loading ? (
                 <View style={styles.loadingContainer}>
-                  <ActivityIndicator size="small" color={theme.COLORS.white} />
+                  <Loader
+                    size="small"
+                    color={theme.COLORS.white}
+                    variant="inline"
+                  />
                   <Text style={styles.submitButtonText}>Saving...</Text>
                 </View>
               ) : (

@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   TextInput,
   ScrollView,
-  ActivityIndicator,
   Alert,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -15,6 +14,7 @@ import theme from '../assets/theme';
 import apiService from '../services/apiService';
 import { AUTH_ROUTES } from '../navigations/Routes';
 import { useAuth } from '../context/AuthContext';
+import Loader from '../components/Loader';
 
 const LoginScreen = ({ navigation }) => {
   const { login } = useAuth();
@@ -40,7 +40,6 @@ const LoginScreen = ({ navigation }) => {
 
   const handleLogin = async () => {
     // Clear previous messages
-    console.log('Clearing messages');
     clearMessages();
 
     // Validate empty fields
@@ -55,7 +54,6 @@ const LoginScreen = ({ navigation }) => {
 
     // Validate username/email format
     if (!validateUsername(username)) {
-      console.log('Invalid username/email format');
       setErrorMessage(
         'Please enter a valid username (3-15 characters, letters, numbers, underscore only) or email address',
       );
@@ -71,16 +69,13 @@ const LoginScreen = ({ navigation }) => {
     setLoading(true);
     setErrorMessage('');
     try {
-      console.log('Logging in');
       const response = await apiService.login({ username, password });
       if (response.success) {
         login(response.data.user, response.data.token);
       } else {
-        console.log('Login failed');
         setErrorMessage(response.message || 'Login failed');
       }
     } catch (error) {
-      console.log('Error logging in', error);
       setErrorMessage(error.message || 'An error occurred');
     } finally {
       setLoading(false);
@@ -192,7 +187,11 @@ const LoginScreen = ({ navigation }) => {
         >
           {loading ? (
             <View style={styles.loadingContainer}>
-              <ActivityIndicator color={theme.COLORS.white} size="small" />
+              <Loader
+                size="small"
+                color={theme.COLORS.white}
+                variant="inline"
+              />
               <Text style={[styles.loginButtonText, { marginLeft: 10 }]}>
                 Signing In...
               </Text>

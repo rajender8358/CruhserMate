@@ -6,7 +6,6 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
-  ActivityIndicator,
   Linking,
   Clipboard,
   Share,
@@ -19,8 +18,9 @@ import { useAuth } from '../context/AuthContext';
 import theme from '../assets/theme';
 import apiService from '../services/apiService';
 import { formatCurrency } from '../utils/formatting';
-import { exportToPDF } from '../utils/exportUtils';
+// Removed old export utils; using direct business-reports endpoints
 import { APP_ROUTES } from '../navigations/Routes';
+import Loader from '../components/Loader';
 
 const DashboardScreen = () => {
   const navigation = useNavigation();
@@ -68,123 +68,21 @@ const DashboardScreen = () => {
   const handleExport = async type => {
     try {
       setExporting(true);
-
-      // Get the current period data
-      const period = selectedDay === 'all' ? 'week' : selectedDay;
-      const { startDate, endDate } = getDayDates(selectedDay);
-
-      const organizationId =
-        user?.organizationId || user?.organization?._id || user?.organization;
-
-      if (!organizationId) {
-        throw new Error(
-          'Organization ID not found. Please log out and log in again.',
-        );
+      const dates = getDayDates(selectedDay);
+      if (!dates) {
+        Alert.alert('Error', 'Cannot view future dates');
+        return;
       }
-
-      const response = await apiService.generateDownloadableReport({
-        startDate,
-        endDate,
-        format: type,
-        organizationId,
-        reportType: 'dashboard',
+      const url = apiService.getBusinessReportUrl(type, {
+        startDate: dates.startDate,
+        endDate: dates.endDate,
+        organizationId: user?.organizationId || user?.organization?._id,
+        includeDetails: true,
+        type: 'all',
       });
-
-      // console.log('🔍 Full response from API:', response);
-
-      if (!response.success) {
-        throw new Error(response.message || 'Failed to generate report');
-      }
-
-      // console.log('🔍 Response data:', response.data);
-      const { blob, downloadUrl, fileName, entriesCount, summary } =
-        response.data;
-
-      if (!blob && !downloadUrl) {
-        console.error('🔍 Response data:', response.data);
-        throw new Error('Download data not received from server');
-      }
-
-      try {
-        if (downloadUrl) {
-          // Open the download URL in Chrome browser
-          try {
-            await Linking.openURL(downloadUrl);
-            Alert.alert(
-              `${type.toUpperCase()} Report Generated`,
-              `Your ${type.toUpperCase()} report is opening in Chrome for download.\n\n` +
-                `The PDF will contain all your data for the selected period.`,
-              [{ text: 'OK' }],
-            );
-          } catch (linkError) {
-            console.error('Failed to open download link:', linkError);
-            Alert.alert(
-              'Download Link Generated',
-              `Your ${type.toUpperCase()} report has been generated.\n\n` +
-                `Please copy this link and open it in Chrome:\n\n${downloadUrl}`,
-              [
-                {
-                  text: 'Copy Link',
-                  onPress: () => Clipboard.setString(downloadUrl),
-                },
-                { text: 'OK' },
-              ],
-            );
-          }
-          // Check if it's a blob URL (starts with blob:)
-          if (downloadUrl.startsWith('blob:')) {
-            // For blob URLs, we can't open them directly in browser
-            // Instead, show a success message
-            Alert.alert(
-              `${type.toUpperCase()} Report Generated`,
-              `Your ${type.toUpperCase()} report has been generated successfully!\n\n` +
-                `The file has been downloaded to your device.`,
-              [{ text: 'OK' }],
-            );
-          } else {
-            // For web URLs, try to open in browser
-            await Linking.openURL(downloadUrl);
-            Alert.alert(
-              `${type.toUpperCase()} Report Generated`,
-              `Your ${type.toUpperCase()} report has been generated with ${
-                entriesCount || 0
-              } entries.\n\n` +
-                `Total Sales: ₹${(summary?.totalSales || 0).toLocaleString(
-                  'en-IN',
-                )}\n` +
-                `Raw Stone Cost: ₹${(
-                  summary?.totalRawStone || 0
-                ).toLocaleString('en-IN')}\n` +
-                `Net Profit: ₹${(summary?.netProfit || 0).toLocaleString(
-                  'en-IN',
-                )}\n\n` +
-                `The report has been opened in your browser. You can download it from there.`,
-              [{ text: 'OK' }],
-            );
-          }
-        }
-      } catch (linkError) {
-        console.error('Failed to open download link:', linkError);
-        Alert.alert(
-          'Download Link Generated',
-          `Your ${type.toUpperCase()} report has been generated.\n\n` +
-            `Please copy this link and open it in your browser:\n\n${downloadUrl}`,
-          [
-            {
-              text: 'Copy Link',
-              onPress: () => Clipboard.setString(downloadUrl),
-            },
-            { text: 'OK' },
-          ],
-        );
-      }
+      await Linking.openURL(url);
     } catch (error) {
-      console.error('Export error:', error);
-      Alert.alert(
-        'Export Failed',
-        `Failed to generate ${type.toUpperCase()} report: ${error.message}`,
-        [{ text: 'OK' }],
-      );
+      Alert.alert('Export Failed', 'Could not open download link');
     } finally {
       setExporting(false);
     }
@@ -283,6 +181,8 @@ const DashboardScreen = () => {
 
   const fetchDashboardData = async () => {
     try {
+      // Ensure loader is shown while fetching data (also on day changes)
+      setLoading(true);
       if (!user) {
         Alert.alert('Error', 'Authentication required');
         return;
@@ -304,9 +204,7 @@ const DashboardScreen = () => {
       });
 
       if (response.success) {
-        console.log('🔍 Dashboard data:', response.data);
         const apiData = response.data || {};
-
         const toNum = v => (typeof v === 'number' ? v : Number(v || 0));
 
         const sales = apiData.totalSales || apiData.sales || {};
@@ -337,6 +235,7 @@ const DashboardScreen = () => {
           other: toNum(expenses.count ?? (expenses.entries || []).length),
         };
 
+        const netWorth = toNum(totals.sales - totals.raw - totals.other);
         const normalizedSummary = {
           totalEntries: counts.sales + counts.raw + counts.other,
           salesEntries: counts.sales,
@@ -344,9 +243,8 @@ const DashboardScreen = () => {
           totalSales: totals.sales,
           totalRawStone: totals.raw,
           totalOtherExpenses: totals.other,
-          netProfit: toNum(
-            apiData.netWorth ?? totals.sales - totals.raw - totals.other,
-          ),
+          // Always compute net worth locally per business rule
+          netProfit: netWorth,
         };
 
         // Build combined entries list for the selected period from sections
@@ -573,17 +471,6 @@ const DashboardScreen = () => {
     );
   };
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={theme.COLORS.primary} />
-          <Text style={styles.loadingText}>Loading Dashboard...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -690,7 +577,15 @@ const DashboardScreen = () => {
 
           {/* Net Worth - Prominent Full Width Card */}
           <View style={styles.netWorthContainer}>
-            <View style={[styles.metricCard, styles.netWorthCard]}>
+            <View
+              style={[
+                styles.metricCard,
+                styles.netWorthCard,
+                (dashboardData.summary?.netProfit ?? 0) >= 0
+                  ? styles.netWorthProfitBorder
+                  : styles.netWorthLossBorder,
+              ]}
+            >
               <View style={styles.netWorthHeader}>
                 <Text style={styles.netWorthTitle}>Net Worth</Text>
                 <View
@@ -708,7 +603,14 @@ const DashboardScreen = () => {
                   </Text>
                 </View>
               </View>
-              <Text style={styles.netWorthValue}>
+              <Text
+                style={[
+                  styles.netWorthValue,
+                  (dashboardData.summary?.netProfit ?? 0) >= 0
+                    ? styles.netWorthValueProfit
+                    : styles.netWorthValueLoss,
+                ]}
+              >
                 {formatCurrency(dashboardData.summary?.netProfit ?? 0)}
               </Text>
               <Text style={styles.netWorthSubtitle}>
@@ -830,7 +732,11 @@ const DashboardScreen = () => {
             disabled={exporting}
           >
             {exporting ? (
-              <ActivityIndicator color="#FFFFFF" />
+              <Loader
+                size="small"
+                color={theme.COLORS.white}
+                variant="inline"
+              />
             ) : (
               <Text style={styles.downloadButtonText}>Download PDF</Text>
             )}
@@ -842,7 +748,11 @@ const DashboardScreen = () => {
             disabled={exporting}
           >
             {exporting ? (
-              <ActivityIndicator color="#FFFFFF" />
+              <Loader
+                size="small"
+                color={theme.COLORS.white}
+                variant="inline"
+              />
             ) : (
               <Text style={styles.downloadButtonText}>Download CSV</Text>
             )}
@@ -863,6 +773,13 @@ const DashboardScreen = () => {
           </View>
         )}
       </ScrollView>
+      {loading && (
+        <Loader
+          variant="overlay"
+          size="large"
+          style={{ backgroundColor: 'transparent' }}
+        />
+      )}
     </SafeAreaView>
   );
 };
@@ -1082,6 +999,12 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
     borderLeftColor: '#FF3B30',
   },
+  netWorthProfitBorder: {
+    borderLeftColor: '#34C759',
+  },
+  netWorthLossBorder: {
+    borderLeftColor: '#FF3B30',
+  },
   netWorthTitle: {
     fontSize: 18,
     fontWeight: '600',
@@ -1090,9 +1013,14 @@ const styles = StyleSheet.create({
   netWorthValue: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#FF3B30',
     textAlign: 'center',
     marginVertical: 10,
+  },
+  netWorthValueProfit: {
+    color: '#34C759',
+  },
+  netWorthValueLoss: {
+    color: '#FF3B30',
   },
   netWorthSubtitle: {
     fontSize: 14,

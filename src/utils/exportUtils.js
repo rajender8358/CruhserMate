@@ -342,57 +342,13 @@ const openInBrowser = (content, fileName, type) => {
 };
 
 // Export to CSV
-export const exportToCSV = async (reportData, reportType, filters) => {
-  try {
-    const csvContent = generateCSVContent(reportData, reportType, filters);
-    const fileName = `CrusherMate_${reportType}_Report_${
-      new Date().toISOString().split('T')[0]
-    }.csv`;
-
-    Alert.alert(
-      '📊 CSV Export',
-      'Opening CSV report in your browser for download...',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Open',
-          onPress: () => openInBrowser(csvContent, fileName, 'csv'),
-        },
-      ],
-    );
-  } catch (error) {
-    console.error('Error exporting CSV:', error);
-    Alert.alert(
-      '❌ Export Failed',
-      'Failed to export CSV file. Please try again.',
-    );
-  }
+// Deprecated: client-side CSV generation is replaced by backend API
+export const exportToCSV = async () => {
+  Alert.alert('CSV Export', 'Use Dashboard export buttons to download CSV.');
 };
 
 // Export to PDF
-export const exportToPDF = async (reportData, reportType, filters) => {
-  try {
-    const htmlContent = generateHTMLContent(reportData, reportType, filters);
-    const fileName = `CrusherMate_${reportType}_Report_${
-      new Date().toISOString().split('T')[0]
-    }.pdf`;
-
-    Alert.alert(
-      '📄 PDF Export',
-      'Opening PDF report in your browser with download options...',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Open',
-          onPress: () => openInBrowser(htmlContent, fileName, 'html'),
-        },
-      ],
-    );
-  } catch (error) {
-    console.error('Error generating PDF:', error);
-    Alert.alert(
-      '❌ PDF Generation Failed',
-      'Failed to generate PDF file. Please try again.',
-    );
-  }
+// Deprecated: client-side PDF generation is replaced by backend API
+export const exportToPDF = async () => {
+  Alert.alert('PDF Export', 'Use Dashboard export buttons to download PDF.');
 };

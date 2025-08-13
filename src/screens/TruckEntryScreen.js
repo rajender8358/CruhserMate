@@ -14,7 +14,6 @@ import {
   FlatList,
   Dimensions,
   Linking,
-  ActivityIndicator,
 } from 'react-native';
 import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -22,6 +21,7 @@ import theme from '../assets/theme';
 import apiService from '../services/apiService';
 import { APP_ROUTES } from '../navigations/Routes';
 import { formatCurrency } from '../utils/formatting';
+import Loader from '../components/Loader';
 
 const { width } = Dimensions.get('window');
 
@@ -571,7 +571,7 @@ const TruckEntryScreen = ({ navigation, route }) => {
           ? 'RawStone'
           : entryType;
 
-      const entryData = {
+      const payload = {
         truckNumber: truckNumber.toUpperCase(),
         truckName: truckName.trim(),
         entryType: backendEntryType,
@@ -594,7 +594,7 @@ const TruckEntryScreen = ({ navigation, route }) => {
       // Token is automatically loaded by apiService
 
       // First validate with backend
-      const validationResponse = await apiService.validateTruckEntry(entryData);
+      const validationResponse = await apiService.validateTruckEntry(payload);
 
       if (!validationResponse.success || !validationResponse.data.isValid) {
         setValidationErrors(validationResponse.data.errors || []);
@@ -611,19 +611,28 @@ const TruckEntryScreen = ({ navigation, route }) => {
 
       let response;
       if (editMode) {
-        // Update existing entry
-        response = await apiService.updateTruckEntry(
-          entryData.id,
-          entryData,
-          null, // No image for now
-        );
+        // Update existing entry using backend PUT shape
+        const id =
+          route?.params?.entryData?._id || route?.params?.entryData?.id;
+        if (!id) {
+          setErrorMessage('Missing entry ID for update');
+          return;
+        }
+        response = await apiService.updateTruckEntry(id, payload, null);
       } else {
         // Create new entry
-        response = await apiService.createTruckEntry(entryData, null); // No image for now
+        response = await apiService.createTruckEntry(payload, null); // No image for now
       }
 
       if (response.success) {
         const truckEntry = response.data?.truckEntry || response.data;
+        // Ensure list updates with latest values when navigating back
+        try {
+          await AsyncStorage.setItem(
+            'lastUpdatedEntryId',
+            truckEntry?._id || '',
+          );
+        } catch {}
         const formattedAmount =
           truckEntry?.formattedAmount ||
           formatCurrency(truckEntry?.totalAmount || 0);
@@ -873,10 +882,10 @@ const TruckEntryScreen = ({ navigation, route }) => {
               maxLength={15}
             />
             {loading && (
-              <ActivityIndicator
+              <Loader
                 size="small"
                 color={theme.COLORS.primary}
-                style={{ marginLeft: 10 }}
+                variant="inline"
               />
             )}
           </View>
@@ -1078,7 +1087,11 @@ const TruckEntryScreen = ({ navigation, route }) => {
         >
           {loading ? (
             <View style={styles.loadingContainer}>
-              <ActivityIndicator color={theme.COLORS.white} size="small" />
+              <Loader
+                size="small"
+                color={theme.COLORS.white}
+                variant="inline"
+              />
               <Text style={[styles.submitButtonText, { marginLeft: 10 }]}>
                 {editMode ? 'Updating...' : 'Submitting...'}
               </Text>
@@ -1100,7 +1113,6 @@ const TruckEntryScreen = ({ navigation, route }) => {
                 style={styles.ownerButton}
                 onPress={() => navigation.navigate(APP_ROUTES.DASHBOARD)}
               >
-                <Text style={styles.ownerButtonIcon}>📊</Text>
                 <Text style={styles.ownerButtonText}>Dashboard</Text>
               </TouchableOpacity>
 

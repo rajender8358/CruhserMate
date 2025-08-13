@@ -7,13 +7,13 @@ import {
   TouchableOpacity,
   TextInput,
   ScrollView,
-  ActivityIndicator,
   Alert,
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import theme from '../assets/theme';
 import apiService from '../services/apiService';
 import { AUTH_ROUTES } from '../navigations/Routes';
+import Loader from '../components/Loader';
 
 const RegisterScreen = ({ navigation }) => {
   const [username, setUsername] = useState('');
@@ -202,7 +202,7 @@ const RegisterScreen = ({ navigation }) => {
           disabled={loading}
         >
           {loading ? (
-            <ActivityIndicator color={theme.COLORS.white} size="small" />
+            <Loader size="small" color={theme.COLORS.white} variant="inline" />
           ) : (
             <Text style={styles.registerButtonText}>Sign Up</Text>
           )}

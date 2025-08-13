@@ -13,7 +13,7 @@ export const clearCorruptedData = async () => {
 
 export const safeJsonParse = (data, fallback = null) => {
   if (!data) return fallback;
-  
+
   try {
     return JSON.parse(data);
   } catch (error) {
@@ -45,13 +45,13 @@ export const debugStorage = async () => {
   try {
     const keys = await AsyncStorage.getAllKeys();
     const data = {};
-    
+
     for (const key of keys) {
       const value = await AsyncStorage.getItem(key);
       data[key] = value;
     }
-    
-    console.log('Storage contents:', data);
+
+    // Intentionally silent in production builds
     return data;
   } catch (error) {
     console.error('Failed to debug storage:', error);
@@ -62,9 +62,9 @@ export const debugStorage = async () => {
 // Force clear all storage and reset app state
 export const forceClearAllStorage = async () => {
   try {
-    console.log('🧹 Clearing all AsyncStorage data...');
+    // Intentionally silent in production builds
     await AsyncStorage.clear();
-    console.log('✅ AsyncStorage cleared successfully');
+    // Intentionally silent in production builds
     return true;
   } catch (error) {
     console.error('❌ Failed to clear AsyncStorage:', error);
@@ -75,9 +75,9 @@ export const forceClearAllStorage = async () => {
 // Add this to your app startup to force clear storage
 export const resetAppData = async () => {
   try {
-    console.log('🔄 Resetting app data...');
+    // Intentionally silent in production builds
     await forceClearAllStorage();
-    console.log('✅ App data reset complete');
+    // Intentionally silent in production builds
     return true;
   } catch (error) {
     console.error('❌ Failed to reset app data:', error);

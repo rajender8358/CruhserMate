@@ -16,26 +16,59 @@ export const formatCurrency = amount => {
 // Accepts optional date string to combine when only time is provided
 export const formatISTTime12h = (timeString, dateString) => {
   try {
-    if (!timeString) return '';
-
-    // If the time looks like a full ISO date, parse directly
-    const looksLikeISO = /\d{4}-\d{2}-\d{2}T/.test(timeString);
-    let dateObj;
-
-    if (looksLikeISO) {
-      dateObj = new Date(timeString);
-    } else {
-      // Build a full ISO string using provided date or today
-      const baseDate = dateString || new Date().toISOString().split('T')[0];
-      // Ensure we always treat as UTC to avoid local offset issues
-      const iso = `${baseDate}T${timeString.replace(' ', '')}Z`;
-      dateObj = new Date(iso);
+    // If no time supplied, try deriving from the date string directly (e.g., ISO timestamps)
+    if (!timeString) {
+      if (!dateString) return '';
+      const d = new Date(dateString);
+      if (isNaN(d.getTime())) return '';
+      return d.toLocaleTimeString('en-IN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+        timeZone: 'Asia/Kolkata',
+      });
     }
 
-    if (isNaN(dateObj.getTime())) return '';
+    const trimmed = String(timeString).trim();
 
-    // Convert to IST and 12-hour format
-    return dateObj.toLocaleTimeString('en-IN', {
+    // If the time looks like a full ISO date, parse directly
+    const looksLikeISO = /\d{4}-\d{2}-\d{2}T/.test(trimmed);
+    if (looksLikeISO) {
+      const d = new Date(trimmed);
+      if (isNaN(d.getTime())) return '';
+      return d.toLocaleTimeString('en-IN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+        timeZone: 'Asia/Kolkata',
+      });
+    }
+
+    // If already includes am/pm, just normalize casing to AM/PM
+    if (/\b(am|pm)\b/i.test(trimmed)) {
+      const normalized = trimmed
+        .replace(/\s+/g, ' ')
+        .replace(/\b(am|pm)\b/i, m => m.toUpperCase());
+      return normalized;
+    }
+
+    // If looks like 24h time (HH:mm or HH:mm:ss), convert to 12h without timezone shifts
+    const timeMatch = trimmed.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+    if (timeMatch) {
+      let hours = parseInt(timeMatch[1], 10);
+      const minutes = timeMatch[2];
+      if (isNaN(hours)) return '';
+      const period = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12 || 12;
+      return `${hours}:${minutes} ${period}`;
+    }
+
+    // Fallback: combine date+time as-is without forcing UTC conversion (avoid wrong offset)
+    const baseDate = dateString || new Date().toISOString().split('T')[0];
+    const combined = `${baseDate}T${trimmed}`;
+    const d = new Date(combined);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString('en-IN', {
       hour: '2-digit',
       minute: '2-digit',
       hour12: true,

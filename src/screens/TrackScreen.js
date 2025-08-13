@@ -7,7 +7,6 @@ import {
   ScrollView,
   RefreshControl,
   Dimensions,
-  ActivityIndicator,
   Alert,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -17,6 +16,7 @@ import { useAuth } from '../context/AuthContext';
 import { APP_ROUTES } from '../navigations/Routes';
 import { getStoredUser } from '../utils/storageUtils';
 import { formatCurrency, formatISTTime12h } from '../utils/formatting';
+import Loader from '../components/Loader';
 
 const { width } = Dimensions.get('window');
 
@@ -52,6 +52,24 @@ const TrackScreen = ({ navigation }) => {
 
     return unsubscribe;
   }, [navigation]);
+
+  // Also refresh when we detect a recently updated entry
+  useEffect(() => {
+    const checkUpdated = async () => {
+      try {
+        const id = await AsyncStorage.getItem('lastUpdatedEntryId');
+        const exp = await AsyncStorage.getItem('lastUpdatedExpenseId');
+        if (id) {
+          await AsyncStorage.removeItem('lastUpdatedEntryId');
+          loadTodayEntries();
+        } else if (exp) {
+          await AsyncStorage.removeItem('lastUpdatedExpenseId');
+          loadTodayEntries();
+        }
+      } catch {}
+    };
+    checkUpdated();
+  }, []);
 
   const loadUserData = async () => {
     try {
@@ -108,11 +126,12 @@ const TrackScreen = ({ navigation }) => {
         const truckEntries = truckResponse.data || [];
         console.log('truckEntries', truckEntries);
         const validTruckEntries = Array.isArray(truckEntries)
-          ? truckEntries.filter(entry => entry && typeof entry === 'object')
+          ? truckEntries
+              .filter(entry => entry && typeof entry === 'object')
+              .map(e => ({ ...e, _id: e._id || e.id, id: e._id || e.id }))
           : [];
         allEntries = [...validTruckEntries];
       } else {
-        // Handle truck entries error silently
       }
 
       // Process other expenses
@@ -126,16 +145,28 @@ const TrackScreen = ({ navigation }) => {
           : [];
 
         // Transform other expenses to match entry format for display
-        const transformedExpenses = validOtherExpenses.map(expense => ({
-          ...expense,
-          entryType: 'Expense',
-          materialType: 'Expense',
-          amount: expense.totalAmount ?? expense.amount,
-          expensesName: expense.expensesName,
-          others: expense.others,
-          date: expense.date,
-          _id: expense._id,
-        }));
+        const transformedExpenses = validOtherExpenses.map(expense => {
+          const anyId =
+            expense?._id ||
+            expense?.id ||
+            expense?.expenseId ||
+            expense?.expenseID;
+          const normalizedId =
+            typeof anyId === 'object'
+              ? anyId?.$oid || anyId?.id || String(anyId)
+              : anyId;
+          return {
+            ...expense,
+            entryType: 'Expense',
+            materialType: 'Expense',
+            amount: expense.totalAmount ?? expense.amount,
+            expensesName: expense.expensesName,
+            others: expense.others,
+            date: expense.date,
+            _id: normalizedId,
+            id: normalizedId,
+          };
+        });
 
         allEntries = [...allEntries, ...transformedExpenses];
       } else {
@@ -174,6 +205,20 @@ const TrackScreen = ({ navigation }) => {
     loadTodayEntries();
   };
 
+  // Normalize various backend ID shapes (string, {_id: { $oid }}, etc.)
+  const getSafeId = item => {
+    if (!item) return null;
+    const raw = item._id != null ? item._id : item.id;
+    if (!raw) return null;
+    if (typeof raw === 'string') return raw;
+    if (typeof raw === 'object') {
+      if (raw.$oid) return String(raw.$oid);
+      // Some ORMs return {id: '...'} inside _id
+      if (raw.id) return String(raw.id);
+    }
+    return String(raw);
+  };
+
   const handleEditEntry = entry => {
     // Navigate to TruckEntry screen with pre-filled data for editing
     navigation.navigate(APP_ROUTES.TRUCK_ENTRY, {
@@ -185,7 +230,7 @@ const TrackScreen = ({ navigation }) => {
   const handleEditOtherExpense = entry => {
     navigation.navigate(APP_ROUTES.OTHER_EXPENSE, {
       editMode: true,
-      entryData: entry,
+      expenseData: { ...entry, _id: getSafeId(entry), id: getSafeId(entry) },
     });
   };
 
@@ -269,7 +314,7 @@ const TrackScreen = ({ navigation }) => {
               if (response.success) {
                 // Remove from local state
                 setTodayEntries(prev =>
-                  prev.filter(entry => entry?._id !== entryId),
+                  prev.filter(entry => getSafeId(entry) !== String(entryId)),
                 );
                 Alert.alert(
                   'Expense Deleted',
@@ -370,6 +415,17 @@ const TrackScreen = ({ navigation }) => {
     ).length;
   };
 
+  // Generate a stable, unique key for list items
+  const getEntryKey = (entry, index) => {
+    if (!entry || typeof entry !== 'object') return `invalid-${index}`;
+    return (
+      entry._id ||
+      `${entry.entryType || 'entry'}-${entry.truckNumber || 'NA'}-${
+        entry.date || entry.entryDate || entry.createdAt || 'NA'
+      }-${index}`
+    );
+  };
+
   const renderEntryCard = (entry, index) => {
     // Defensive check - if entry is undefined or null, don't render
     if (!entry || typeof entry !== 'object') {
@@ -397,7 +453,10 @@ const TrackScreen = ({ navigation }) => {
                 {entry?.expensesName || 'Unknown Expense'}
               </Text>
               <Text style={styles.entryTime}>
-                {entry?.date ? formatTime(entry.entryTime, entry.date) : ''}
+                {formatTime(
+                  entry?.entryTime || entry?.createdAt,
+                  entry?.date || entry?.createdAt,
+                )}
               </Text>
             </View>
             <View style={styles.entryActions}>
@@ -409,7 +468,9 @@ const TrackScreen = ({ navigation }) => {
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.deleteButton}
-                onPress={() => handleDeleteOtherExpense(entry?._id)}
+                onPress={() =>
+                  handleDeleteOtherExpense(entry?._id || entry?.id)
+                }
               >
                 <Text style={styles.deleteButtonText}>Delete</Text>
               </TouchableOpacity>
@@ -425,6 +486,13 @@ const TrackScreen = ({ navigation }) => {
                   Expense
                 </Text>
               </View>
+            </View>
+
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Time:</Text>
+              <Text style={styles.detailValue}>
+                {entry?.date ? formatTime(entry.entryTime, entry.date) : ''}
+              </Text>
             </View>
 
             {entry?.others && (
@@ -461,7 +529,10 @@ const TrackScreen = ({ navigation }) => {
               <Text style={styles.truckName}>{entry.truckName}</Text>
             )}
             <Text style={styles.entryTime}>
-              {formatTime(entry?.entryTime, entry?.entryDate)}
+              {formatTime(
+                entry?.entryTime || entry?.createdAt,
+                entry?.entryDate,
+              )}
             </Text>
           </View>
           <View style={styles.entryActions}>
@@ -632,7 +703,6 @@ const TrackScreen = ({ navigation }) => {
               style={styles.ownerButton}
               onPress={() => navigation.navigate(APP_ROUTES.DASHBOARD)}
             >
-              <Text style={styles.ownerButtonIcon}>📊</Text>
               <Text style={styles.ownerButtonText}>Dashboard</Text>
             </TouchableOpacity>
           </View>
@@ -681,32 +751,22 @@ const TrackScreen = ({ navigation }) => {
             style={styles.emptyStateButton}
             onPress={() => navigation.navigate(APP_ROUTES.TRUCK_ENTRY)}
           >
-            <Text style={styles.emptyStateButtonIcon}>+</Text>
             <Text style={styles.emptyStateButtonText}>Add Entry</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[
-              styles.emptyStateButton,
-              { backgroundColor: theme.COLORS.secondary },
-            ]}
+            style={styles.emptyStateButton}
             onPress={() => navigation.navigate(APP_ROUTES.OTHER_EXPENSE)}
           >
-            {/* <Text style={styles.emptyStateButtonIcon}>💰</Text> */}
             <Text style={styles.emptyStateButtonText}>Expenses</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Owner Dashboard Button - Show for owners even in empty state */}
         {userRole === 'owner' && (
           <TouchableOpacity
-            style={[
-              styles.emptyStateButton,
-              { backgroundColor: theme.COLORS.secondary, marginTop: 12 },
-            ]}
+            style={[styles.emptyStateButton, styles.ownerFullWidthButton]}
             onPress={() => navigation.navigate(APP_ROUTES.DASHBOARD)}
           >
-            <Text style={styles.emptyStateButtonIcon}>📊</Text>
             <Text style={styles.emptyStateButtonText}>Dashboard</Text>
           </TouchableOpacity>
         )}
@@ -772,12 +832,16 @@ const TrackScreen = ({ navigation }) => {
               <Text style={styles.entriesTitle}>Today's Entries</Text>
               {todayEntries
                 .filter(entry => entry && typeof entry === 'object')
-                .map((entry, index) => renderEntryCard(entry, index))}
+                .map((entry, index) => (
+                  <React.Fragment key={getEntryKey(entry, index)}>
+                    {renderEntryCard(entry, index)}
+                  </React.Fragment>
+                ))}
             </View>
           </>
         ) : loading ? (
           <View style={styles.loadingContainer}>
-            <Text style={styles.loadingText}>Loading today's entries...</Text>
+            <Loader size="medium" variant="inline" />
           </View>
         ) : (
           renderEmptyState()
@@ -792,7 +856,6 @@ const TrackScreen = ({ navigation }) => {
               style={styles.addEntryButton}
               onPress={() => navigation.navigate(APP_ROUTES.TRUCK_ENTRY)}
             >
-              <Text style={styles.addEntryButtonIcon}>+</Text>
               <Text style={styles.addEntryButtonText}>Add Entry</Text>
             </TouchableOpacity>
 
@@ -1207,6 +1270,13 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 4,
   },
+  emptyStateButtonOutline: {
+    backgroundColor: theme.COLORS.white,
+    borderWidth: 2,
+    borderColor: theme.COLORS.primary,
+    elevation: 0,
+    shadowOpacity: 0,
+  },
   emptyStateButtonIcon: {
     fontSize: 24,
     color: theme.COLORS.white,
@@ -1217,6 +1287,13 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: theme.COLORS.white,
+  },
+  emptyStateButtonTextOutline: {
+    color: theme.COLORS.primary,
+  },
+  ownerFullWidthButton: {
+    marginTop: 12,
+    width: '100%',
   },
   loadingContainer: {
     flex: 1,
@@ -1300,7 +1377,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.COLORS.secondary,
+    backgroundColor: theme.COLORS.primary,
     paddingVertical: 16,
     paddingHorizontal: 20,
     borderRadius: 12,
